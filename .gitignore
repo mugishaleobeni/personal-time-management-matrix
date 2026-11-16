@@ -1,0 +1,24 @@
+# Environment variables & secrets
+.env
+backend/.env
+*.env
+*.pem
+*.key
+
+# Dependencies & Build Output
+node_modules/
+backend/venv/
+venv/
+dist/
+.DS_Store
+Thumbs.db
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Agent logs & system temporary files
+.system_generated/

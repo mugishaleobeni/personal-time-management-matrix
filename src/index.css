@@ -1,0 +1,49 @@
+@import "tailwindcss";
+@import 'tdesign-react/es/style/index.css';
+
+:root {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  background-color: #08130e;
+  color: #f1f5f9;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar for taste frontend */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(52, 211, 153, 0.4);
+}
+
+/* TDesign Component Overrides for Luxury Dark/Light Modern Aesthetic */
+.t-button--theme-primary {
+  --td-brand-color: #10b981 !important;
+  --td-brand-color-hover: #059669 !important;
+  --td-brand-color-active: #047857 !important;
+}
+
+.t-tag--theme-primary {
+  --td-brand-color: #10b981 !important;
+}
+
+.t-card {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
