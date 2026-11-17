@@ -82,7 +82,7 @@ This code will expire in 30 minutes. If you did not initiate this request, you c
           If you did not request this code, no action is required and your account remains secure.
         </p>
         <div style="border-top: 1px solid rgba(255,255,255,0.1); margin-top: 24px; padding-top: 16px; text-align: center; font-size: 11px; color: #64748b;">
-          Chronos OS • Kigali (CAT) • One Love Architecture
+          Master Your Time • Kigali (CAT)
         </div>
       </div>
     </body>
@@ -92,14 +92,14 @@ This code will expire in 30 minutes. If you did not initiate this request, you c
 
 async def send_welcome_email(to_email: str, name: str) -> bool:
     """Dispatches an onboarding welcome email upon account registration."""
-    subject = "Welcome to Chronos OS • Workspace Initialized"
+    subject = "Welcome to Master Your Time • Workspace Initialized"
     text_content = f"""Hello {name},
 
-Welcome to Chronos OS! Your personal productivity workspace has been initialized successfully.
+Welcome to Master Your Time! Your personal productivity workspace has been initialized successfully.
 
 Sign into your workspace anytime to plan daily matrix schedules, track focus timers, and monitor daily rituals.
 
-— Chronos OS Team"""
+— Master Your Time Team"""
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -115,7 +115,7 @@ Sign into your workspace anytime to plan daily matrix schedules, track focus tim
           Your high-velocity personal time management system is ready. Organize priority tasks, flow through focus sessions, and maintain 14-day daily rituals with absolute focus.
         </p>
         <div style="border-top: 1px solid rgba(255,255,255,0.1); margin-top: 24px; padding-top: 16px; text-align: center; font-size: 11px; color: #64748b;">
-          Chronos OS • Production Verified
+          Master Your Time • Production Verified
         </div>
       </div>
     </body>
@@ -129,16 +129,16 @@ def generate_digest_content(user: Dict[str, Any], tasks: List[Dict[str, Any]], r
     
     body = (
         f"Good morning, {user.get('name', 'Alex')}!\n\n"
-        f"Here is your Chronos Automated Daily Briefing for {datetime.utcnow().strftime('%A, %B %d, %Y')}:\n\n"
+        f"Here is your Master Your Time Automated Daily Briefing for {datetime.utcnow().strftime('%A, %B %d, %Y')}:\n\n"
         f"📋 Active Priority Tasks: {len(due_today)}\n"
         f"🔥 Completed Morning Habits: {len(completed_habits)} of {len(routines)}\n"
         f"🎯 Focus Time Target: 8.0 hours\n\n"
         f"Highest Priority Action Item: "
         f"'{due_today[0]['title'] if due_today else 'All priority tasks complete!'}'\n\n"
-        f"— Chronos OS Automated Intelligence"
+        f"— Master Your Time Automated Intelligence"
     )
     return {
-        "subject": f"Chronos Daily Intelligence Digest • {datetime.utcnow().strftime('%b %d')}",
+        "subject": f"Master Your Time Daily Intelligence Digest • {datetime.utcnow().strftime('%b %d')}",
         "body": body,
         "recipient": user.get("email", "alex.sterling@devmatrix.io"),
         "tasksDue": len(due_today),
@@ -160,7 +160,7 @@ async def dispatch_digest_email(user: Dict[str, Any], tasks: List[Dict[str, Any]
         <p style="font-size: 15px; color: #ffffff; margin-bottom: 16px;">Good day, <strong>{name}</strong>!</p>
         <p style="font-size: 13px; color: #cbd5e1; line-height: 1.6;">{digest['body'].replace(chr(10), '<br>')}</p>
         <div style="border-top: 1px solid rgba(255,255,255,0.1); margin-top: 24px; padding-top: 16px; font-size: 11px; color: #64748b;">
-          Automated Intelligence • Chronos OS
+          Automated Intelligence • Master Your Time
         </div>
       </div>
     </body>

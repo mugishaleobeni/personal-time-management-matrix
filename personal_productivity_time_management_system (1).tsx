@@ -1007,7 +1007,7 @@ function DashboardView({
             <Flame className="w-3.5 h-3.5 text-emerald-400" /> Dose of Culture • 14-Day Flow
           </div>
           <h1 className="text-xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-white leading-tight drop-shadow-md">
-            One Love, <span className="text-emerald-400">{user.name.split(' ')[0]}</span>.
+            HELLO, WELCOME BACK TO MASTER YOUR TIME, <span className="text-emerald-400">{user.name.split(' ')[0]}</span>.
           </h1>
           <p className="mt-2 text-xs sm:text-sm md:text-base text-emerald-50/90 font-medium drop-shadow leading-relaxed">
             Channel velocity has <strong className="text-emerald-300">{urgentTasksCount} priority</strong> actions and <strong className="text-white">{pendingTasksCount} tasks</strong> queued. Your momentum score is running at <strong className="text-emerald-300">{productivityScore}%</strong>.
