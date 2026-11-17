@@ -4661,20 +4661,6 @@ function LandingAuthPage({
               </p>
             </div>
           </div>
-
-          <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 text-[11px] text-slate-400 font-mono">
-            <span className="flex items-center gap-1.5 text-emerald-400">
-              <Check className="w-3.5 h-3.5" /> MongoDB Atlas Cloud
-            </span>
-            <span>•</span>
-            <span className="flex items-center gap-1.5 text-emerald-400">
-              <Check className="w-3.5 h-3.5" /> Gmail SMTP Verification
-            </span>
-            <span>•</span>
-            <span className="flex items-center gap-1.5 text-emerald-400">
-              <Check className="w-3.5 h-3.5" /> Gunicorn Production
-            </span>
-          </div>
         </div>
 
         {/* Right Auth Gateway Card */}
