@@ -31,10 +31,10 @@ class Settings(BaseSettings):
     # Email & SMTP Settings
     SMTP_HOST: str = Field(default="smtp.gmail.com")
     SMTP_PORT: int = Field(default=587)
-    SMTP_USER: str = Field(default="mugishaleobeni0@gmail.com")
+    SMTP_USER: str = Field(default="engineerleobeni@gmail.com")
     GMAIL_APP_PASSWORD: str = Field(default="lygz ltwu itmf mrtz")
     SMTP_PASSWORD: str = Field(default="lygz ltwu itmf mrtz")
-    SMTP_FROM_EMAIL: str = Field(default="mugishaleobeni0@gmail.com")
+    SMTP_FROM_EMAIL: str = Field(default="engineerleobeni@gmail.com")
     SMTP_FROM_NAME: str = Field(default="Master Your Time")
     RESEND_API_KEY: str = Field(default="", description="Resend HTTPS API key for cloud email delivery over port 443")
     BREVO_API_KEY: str = Field(default="", description="Brevo HTTPS API key for cloud email delivery over port 443")

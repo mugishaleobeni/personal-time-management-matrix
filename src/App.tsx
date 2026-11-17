@@ -7,7 +7,7 @@ import {
   Sparkles, Shield, LogOut, Coffee, Timer as TimerIcon,
   Layers, FileText, CheckSquare, ListTodo, Star, Compass, RefreshCw,
   X, Zap, ExternalLink, Image as ImageIcon, Upload, Save, Eye, BookOpen, Copy, Lock,
-  Volume2, Sliders, Smartphone
+  Volume2, Sliders, Smartphone, MoreHorizontal, LayoutGrid
 } from 'lucide-react';
 import { Button as TButton, Tag as TTag, Badge as TBadge, Tooltip as TTooltip, Switch as TSwitch, Progress as TProgress } from 'tdesign-react';
 import { api } from './services/api';
@@ -82,6 +82,7 @@ export default function App() {
   // ExBOS Floating Navigation States
   const [modulePanelOpen, setModulePanelOpen] = useState(false);
   const [quickPanelOpen, setQuickPanelOpen] = useState(false);
+  const [moreNavOpen, setMoreNavOpen] = useState(false);
   const [activeModuleHover, setActiveModuleHover] = useState(null);
   const navContainerRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -516,6 +517,9 @@ export default function App() {
             syncedCount++;
           } else if (item.type === 'toggle_task') {
             await api.toggleTask(item.payload.id);
+            if (item.payload.subtasks) {
+              await api.updateTask(item.payload.id, { subtasks: item.payload.subtasks }).catch(() => {});
+            }
             syncedCount++;
           } else if (item.type === 'delete_task') {
             await api.deleteTask(item.payload.id);
@@ -565,15 +569,31 @@ export default function App() {
   }, []);
 
   const toggleTaskCompletion = (taskId) => {
+    let nextStatus = 'Completed';
+    let updatedSubtasks: any[] = [];
     setTasks(prev => prev.map(t => {
       if (t.id === taskId) {
-        const nextStatus = t.status === 'Completed' ? 'In Progress' : 'Completed';
-        return { ...t, status: nextStatus };
+        nextStatus = t.status === 'Completed' ? 'In Progress' : 'Completed';
+        if (nextStatus === 'Completed' && t.subtasks && t.subtasks.length > 0) {
+          updatedSubtasks = t.subtasks.map((s: any, idx: number) => 
+            typeof s === 'object' ? { ...s, completed: true } : { id: `st-${idx}`, text: String(s), completed: true }
+          );
+        } else {
+          updatedSubtasks = t.subtasks || [];
+        }
+        return { ...t, status: nextStatus, subtasks: updatedSubtasks };
       }
       return t;
     }));
-    api.toggleTask(taskId).catch(() => {
-      enqueueOfflineTaskAction({ type: 'toggle_task', payload: { id: taskId } });
+    api.toggleTask(taskId).then(updated => {
+      if (updated) {
+        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updated } : t));
+      }
+    }).catch(() => {
+      enqueueOfflineTaskAction({ 
+        type: 'toggle_task', 
+        payload: { id: taskId, status: nextStatus, subtasks: updatedSubtasks } 
+      });
     });
   };
 
@@ -658,12 +678,24 @@ export default function App() {
 
       <div className="relative z-10 flex min-h-screen flex-col md:flex-row">
 
+        {/* Backdrop for open floating popups on mobile & desktop */}
+        {(quickPanelOpen || modulePanelOpen || moreNavOpen) && (
+          <div 
+            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px] transition-opacity animate-fadeIn"
+            onClick={() => {
+              setQuickPanelOpen(false);
+              setModulePanelOpen(false);
+              setMoreNavOpen(false);
+            }}
+          />
+        )}
+
         {/* ======================================================== */}
         {/* RESPONSIVE EXBOS NAVIGATION:                             */}
-        {/* Mobile: Floating Bottom Dock (< md)                      */}
+        {/* Mobile: Floating Fixed Bottom Dock (< md) (No scrolling) */}
         {/* Desktop: Floating Capsule Sidebar (>= md)                */}
         {/* ======================================================== */}
-        <aside className="fixed bottom-3 left-1/2 -translate-x-1/2 md:translate-x-0 md:bottom-auto md:left-4 lg:left-5 md:top-1/2 md:-translate-y-1/2 z-50 select-none max-w-[calc(100vw-24px)]">
+        <aside className="fixed bottom-3 left-1/2 -translate-x-1/2 md:translate-x-0 md:bottom-auto md:left-4 lg:left-5 md:top-1/2 md:-translate-y-1/2 z-50 select-none w-[calc(100vw-24px)] max-w-md md:w-auto md:max-w-none">
           <nav 
             ref={navContainerRef}
             aria-label="Master Your Time primary navigation"
@@ -673,9 +705,9 @@ export default function App() {
               WebkitBackdropFilter: 'blur(14px) saturate(145%)',
               boxShadow: '0 20px 50px rgba(0,0,0,0.55), 0 0 25px rgba(16, 185, 129, 0.12), inset 0 1px rgba(52, 211, 153, 0.3), inset 0 0 0 1px rgba(0,0,0,0.3)'
             }}
-            className="w-auto md:w-[68px] lg:w-[72px] flex flex-row md:flex-col items-center gap-1 sm:gap-1.5 py-2 px-2.5 md:py-3 md:px-2 rounded-[32px] md:rounded-[42px] border border-emerald-500/30 relative isolation-auto transition-all duration-300 overflow-x-auto md:overflow-visible hide-scrollbar"
+            className="w-full md:w-[68px] lg:w-[72px] flex flex-row md:flex-col items-center justify-between md:justify-start gap-1 sm:gap-1.5 py-2 px-3 md:py-3 md:px-2 rounded-[32px] md:rounded-[42px] border border-emerald-500/30 relative transition-all duration-300 overflow-visible"
           >
-            {/* Smooth Spring Active Indicator Pill (Responsive horizontal on mobile, vertical on desktop) */}
+            {/* Smooth Spring Active Indicator Pill (Desktop Only) */}
             <div 
               aria-hidden="true"
               style={{
@@ -688,23 +720,29 @@ export default function App() {
             />
 
             {/* Navigation Module Buttons */}
-            {navModules.map((item, idx) => {
+            {navModules.map((item) => {
               const Icon = item.icon;
               const isSelected = activeTab === item.id;
+              const isCoreMobile = ['dashboard', 'tasks', 'timer', 'routine'].includes(item.id);
 
               return (
-                <div key={item.id} className="relative group/nav flex items-center justify-center shrink-0">
+                <div 
+                  key={item.id} 
+                  className={`relative group/nav items-center justify-center shrink-0 ${isCoreMobile ? 'flex' : 'hidden md:flex'}`}
+                >
                   <button
                     type="button"
                     onClick={() => {
                       if (activeTab === item.id) {
                         setModulePanelOpen(prev => !prev);
                         setQuickPanelOpen(false);
+                        setMoreNavOpen(false);
                       } else {
                         setActiveTab(item.id);
                         setActiveSubPage(item.sub[0]);
                         setModulePanelOpen(false);
                         setQuickPanelOpen(false);
+                        setMoreNavOpen(false);
                       }
                     }}
                     aria-label={item.label}
@@ -740,8 +778,8 @@ export default function App() {
               );
             })}
 
-            {/* Rail Divider (Horizontal on desktop, vertical on mobile) */}
-            <div className="w-[1px] h-6 md:w-7 md:h-[1px] bg-emerald-400/30 mx-1 md:my-1 shrink-0" />
+            {/* Desktop Rail Divider */}
+            <div className="hidden md:block w-7 h-[1px] bg-emerald-400/30 my-1 shrink-0" />
 
             {/* Solid Green Plus Quick Actions Button */}
             <div className="relative group/plus shrink-0">
@@ -750,6 +788,7 @@ export default function App() {
                 onClick={() => {
                   setQuickPanelOpen(prev => !prev);
                   setModulePanelOpen(false);
+                  setMoreNavOpen(false);
                 }}
                 aria-expanded={quickPanelOpen}
                 aria-label="Open Quick Actions"
@@ -772,8 +811,37 @@ export default function App() {
               </div>
             </div>
 
-            {/* User Profile / Photo Changer Trigger */}
-            <div className="relative group/auth shrink-0">
+            {/* Mobile More Navigation Button (Shows remaining modules cleanly without scrolling) */}
+            {(() => {
+              const isMoreActive = !['dashboard', 'tasks', 'timer', 'routine'].includes(activeTab);
+              return (
+                <div className="md:hidden relative group/more shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMoreNavOpen(prev => !prev);
+                      setQuickPanelOpen(false);
+                      setModulePanelOpen(false);
+                    }}
+                    aria-expanded={moreNavOpen}
+                    aria-label="More Navigation"
+                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer relative ${
+                      isMoreActive || moreNavOpen
+                        ? 'text-white bg-emerald-500 shadow-md shadow-emerald-500/30'
+                        : 'text-emerald-100/80 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <LayoutGrid className="w-4 h-4 transition-transform group-hover/more:scale-110" />
+                    {isMoreActive && (
+                      <span className="absolute right-1.5 top-1.5 w-2 h-2 rounded-full bg-emerald-300 ring-2 ring-[#0c241a]" />
+                    )}
+                  </button>
+                </div>
+              );
+            })()}
+
+            {/* Desktop User Profile / Photo Changer Trigger */}
+            <div className="hidden md:flex relative group/auth shrink-0">
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -794,114 +862,201 @@ export default function App() {
                 )}
               </button>
             </div>
-
-            {/* Subnavigation Drawer Panel (Responsive Positioning) */}
-            {modulePanelOpen && (
-              <div 
-                style={{
-                  backgroundColor: 'rgba(14, 32, 22, 0.96)',
-                  backdropFilter: 'blur(14px) saturate(145%)',
-                  WebkitBackdropFilter: 'blur(14px) saturate(145%)',
-                  boxShadow: '0 22px 65px rgba(0,0,0,0.7), inset 0 1px rgba(52, 211, 153, 0.25)'
-                }}
-                className="absolute bottom-[calc(100%+14px)] md:bottom-auto left-1/2 -translate-x-1/2 md:translate-x-0 md:left-[calc(100%+16px)] md:top-4 z-40 w-[270px] sm:w-64 p-3.5 rounded-[24px] border border-emerald-500/30 shadow-2xl text-slate-100 animate-fadeIn"
-              >
-                <div className="flex items-center justify-between pb-3 mb-2 border-b border-emerald-500/20">
-                  <div>
-                    <span className="text-[9px] uppercase tracking-widest font-extrabold text-emerald-300 block">
-                      MASTER YOUR TIME • SUBNAVIGATION
-                    </span>
-                    <h4 className="text-sm font-bold text-white leading-tight">
-                      {activeModuleObj.label}
-                    </h4>
-                  </div>
-                  <button 
-                    onClick={() => setModulePanelOpen(false)}
-                    className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 transition"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                <div className="space-y-1">
-                  {activeModuleObj.sub.map((subName, i) => {
-                    const isActive = activeSubPage === subName;
-                    return (
-                      <button
-                        key={i}
-                        onClick={() => {
-                          setActiveSubPage(subName);
-                          showToast(`${activeModuleObj.label} › ${subName}`);
-                          setModulePanelOpen(false);
-                        }}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition ${
-                          isActive 
-                            ? 'bg-emerald-500/25 border border-emerald-400/40 text-emerald-300 backdrop-blur-sm' 
-                            : 'text-slate-300 hover:bg-white/10 hover:text-white border border-transparent'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-[10px] font-mono text-emerald-400/70 font-bold">
-                            {String(i + 1).padStart(2, '0')}
-                          </span>
-                          <span>{subName}</span>
-                        </div>
-                        {isActive && <span className="text-emerald-400 font-black">•</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Quick Actions Panel (Responsive Positioning) */}
-            {quickPanelOpen && (
-              <div 
-                style={{
-                  backgroundColor: 'rgba(11, 28, 20, 0.96)',
-                  backdropFilter: 'blur(12px) saturate(140%)',
-                  WebkitBackdropFilter: 'blur(12px) saturate(140%)',
-                  boxShadow: '0 22px 70px rgba(0,0,0,0.65), inset 0 1px rgba(52, 211, 153, 0.22)'
-                }}
-                className="absolute bottom-[calc(100%+14px)] md:bottom-2 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-[calc(100%+16px)] z-40 w-[290px] sm:w-80 p-3.5 rounded-[26px] border border-emerald-500/30 shadow-2xl text-slate-100 animate-fadeIn"
-              >
-                <div className="flex items-center justify-between pb-3 mb-3 border-b border-emerald-500/20">
-                  <div>
-                    <h4 className="text-sm font-bold text-white leading-tight">Quick Actions</h4>
-                    <p className="text-[10px] text-emerald-200/70">Common productivity tasks</p>
-                  </div>
-                  <button 
-                    onClick={() => setQuickPanelOpen(false)}
-                    className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 transition"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  {quickActions.map((qa, idx) => {
-                    const QAIcon = qa.icon;
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => {
-                          qa.action();
-                          setQuickPanelOpen(false);
-                        }}
-                        className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border border-emerald-500/20 bg-white/[0.08] hover:bg-emerald-500/20 text-white/90 hover:text-white transition group/act backdrop-blur-sm"
-                      >
-                        <QAIcon className="w-5 h-5 text-emerald-400 group-hover/act:scale-110 transition-transform" />
-                        <span className="text-[10px] font-semibold text-center leading-tight">
-                          {qa.label}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
           </nav>
+
+          {/* Subnavigation Drawer Panel (Responsive Positioning) */}
+          {modulePanelOpen && (
+            <div 
+              style={{
+                backgroundColor: 'rgba(14, 32, 22, 0.98)',
+                backdropFilter: 'blur(20px) saturate(150%)',
+                WebkitBackdropFilter: 'blur(20px) saturate(150%)',
+                boxShadow: '0 24px 70px rgba(0,0,0,0.75), inset 0 1px rgba(52, 211, 153, 0.3)'
+              }}
+              className="fixed bottom-20 left-1/2 -translate-x-1/2 md:bottom-auto md:translate-x-0 md:left-[calc(100%+16px)] md:top-4 md:absolute z-50 w-[90vw] max-w-xs sm:w-64 p-3.5 rounded-[24px] border border-emerald-500/35 shadow-2xl text-slate-100 animate-slideUp"
+            >
+              <div className="flex items-center justify-between pb-3 mb-2 border-b border-emerald-500/20">
+                <div>
+                  <span className="text-[9px] uppercase tracking-widest font-extrabold text-emerald-300 block">
+                    MASTER YOUR TIME • SUBNAVIGATION
+                  </span>
+                  <h4 className="text-sm font-bold text-white leading-tight">
+                    {activeModuleObj.label}
+                  </h4>
+                </div>
+                <button 
+                  onClick={() => setModulePanelOpen(false)}
+                  className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 transition"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="space-y-1">
+                {activeModuleObj.sub.map((subName, i) => {
+                  const isActive = activeSubPage === subName;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setActiveSubPage(subName);
+                        showToast(`${activeModuleObj.label} › ${subName}`);
+                        setModulePanelOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition ${
+                        isActive 
+                          ? 'bg-emerald-500/25 border border-emerald-400/40 text-emerald-300 backdrop-blur-sm' 
+                          : 'text-slate-300 hover:bg-white/10 hover:text-white border border-transparent'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-[10px] font-mono text-emerald-400/70 font-bold">
+                          {String(i + 1).padStart(2, '0')}
+                        </span>
+                        <span>{subName}</span>
+                      </div>
+                      {isActive && <span className="text-emerald-400 font-black">•</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Quick Actions Panel (Responsive Positioning) */}
+          {quickPanelOpen && (
+            <div 
+              style={{
+                backgroundColor: 'rgba(11, 28, 20, 0.98)',
+                backdropFilter: 'blur(20px) saturate(150%)',
+                WebkitBackdropFilter: 'blur(20px) saturate(150%)',
+                boxShadow: '0 24px 70px rgba(0,0,0,0.75), inset 0 1px rgba(52, 211, 153, 0.3)'
+              }}
+              className="fixed bottom-20 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-[calc(100%+16px)] md:bottom-2 md:absolute z-50 w-[90vw] max-w-xs sm:w-80 p-4 rounded-[26px] border border-emerald-500/35 shadow-2xl text-slate-100 animate-slideUp"
+            >
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-emerald-500/20">
+                <div>
+                  <h4 className="text-sm font-bold text-white leading-tight">Quick Actions</h4>
+                  <p className="text-[10px] text-emerald-200/70">Common productivity shortcuts</p>
+                </div>
+                <button 
+                  onClick={() => setQuickPanelOpen(false)}
+                  className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 transition"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {quickActions.map((qa, idx) => {
+                  const QAIcon = qa.icon;
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        qa.action();
+                        setQuickPanelOpen(false);
+                      }}
+                      className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border border-emerald-500/20 bg-white/[0.08] hover:bg-emerald-500/20 text-white/90 hover:text-white transition group/act backdrop-blur-sm"
+                    >
+                      <QAIcon className="w-5 h-5 text-emerald-400 group-hover/act:scale-110 transition-transform" />
+                      <span className="text-[10px] font-semibold text-center leading-tight">
+                        {qa.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* More Navigation Drawer Panel (Mobile Only - Smooth floating sheet) */}
+          {moreNavOpen && (
+            <div 
+              style={{
+                backgroundColor: 'rgba(11, 28, 20, 0.98)',
+                backdropFilter: 'blur(20px) saturate(160%)',
+                WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+                boxShadow: '0 24px 70px rgba(0,0,0,0.75), inset 0 1px rgba(52, 211, 153, 0.3)'
+              }}
+              className="fixed bottom-20 left-1/2 -translate-x-1/2 md:hidden z-50 w-[92vw] max-w-sm p-4 rounded-[28px] border border-emerald-500/35 shadow-2xl text-slate-100 animate-slideUp"
+            >
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-emerald-500/20">
+                <div>
+                  <h4 className="text-sm font-bold text-white leading-tight">More Navigation</h4>
+                  <p className="text-[10px] text-emerald-200/70">Access all workspace modules & tools</p>
+                </div>
+                <button 
+                  onClick={() => setMoreNavOpen(false)}
+                  className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 transition"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {navModules.filter(m => !['dashboard', 'tasks', 'timer', 'routine'].includes(m.id)).map(item => {
+                  const Icon = item.icon;
+                  const isSelected = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        setActiveSubPage(item.sub[0]);
+                        setMoreNavOpen(false);
+                        showToast(item.label);
+                      }}
+                      className={`flex items-center gap-2.5 p-2.5 rounded-2xl border transition-all text-left ${
+                        isSelected 
+                          ? 'bg-emerald-500/30 border-emerald-400 text-white shadow-md shadow-emerald-500/20' 
+                          : 'border-white/10 bg-white/[0.06] hover:bg-white/[0.12] text-slate-200'
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                        isSelected ? 'bg-emerald-500 text-white' : 'bg-emerald-500/20 text-emerald-300'
+                      }`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold truncate leading-tight">{item.label}</div>
+                        <div className="text-[10px] text-slate-400 truncate">{item.sub[0]}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Profile Photo & Sign Out Quick Actions in More Drawer */}
+              <div className="mt-3 pt-3 border-t border-emerald-500/20 flex items-center justify-between gap-2">
+                <button
+                  onClick={() => {
+                    fileInputRef.current?.click();
+                    setMoreNavOpen(false);
+                  }}
+                  className="flex-1 flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/10 text-xs font-semibold text-slate-200 transition"
+                >
+                  {user.avatar ? (
+                    <img src={user.avatar} alt={user.name} className="w-5 h-5 rounded-full object-cover ring-1 ring-emerald-400" />
+                  ) : (
+                    <ImageIcon className="w-4 h-4 text-emerald-400" />
+                  )}
+                  <span className="truncate">Change Avatar / Wallpaper</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setMoreNavOpen(false);
+                    handleLogout();
+                  }}
+                  className="p-2 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 hover:text-white transition"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </aside>
 
         {/* ======================================================== */}
@@ -1068,6 +1223,7 @@ export default function App() {
                 themeMode={themeMode}
                 enqueueOfflineTaskAction={enqueueOfflineTaskAction}
                 isOnline={isOnline}
+                toggleTaskCompletion={toggleTaskCompletion}
               />
             )}
 
@@ -1917,7 +2073,7 @@ function DashboardView({
 // 2. TO-DO LIST VIEW (Full Glassmorphic Styling, Responsive)
 // ==========================================================
 
-function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, showToast, themeMode, enqueueOfflineTaskAction, isOnline }: any) {
+function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, showToast, themeMode, enqueueOfflineTaskAction, isOnline, toggleTaskCompletion }: any) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedPriority, setSelectedPriority] = useState('All');
@@ -2272,12 +2428,35 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
                     </div>
                   </div>
 
-                  <h3 className={`text-base font-bold leading-snug ${task.status === 'Completed' ? 'line-through text-slate-400' : 'text-white'}`}>
-                    {task.title}
-                  </h3>
-                  <p className="text-xs text-slate-300 mt-1 line-clamp-2">
-                    {task.description}
-                  </p>
+                  <div className="flex items-start gap-3 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => toggleTaskCompletion && toggleTaskCompletion(task.id)}
+                      title={task.status === 'Completed' ? "Mark task as In Progress" : "Complete task & auto-complete all subtasks"}
+                      className={`mt-0.5 w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 transition-all ${
+                        task.status === 'Completed'
+                          ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/30'
+                          : 'border-white/30 hover:border-emerald-400 text-transparent hover:text-emerald-400/50 bg-white/5'
+                      }`}
+                    >
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <h3 
+                        onClick={() => toggleTaskCompletion && toggleTaskCompletion(task.id)}
+                        className={`text-base font-bold leading-snug cursor-pointer transition ${
+                          task.status === 'Completed' ? 'line-through text-slate-400' : 'text-white hover:text-emerald-300'
+                        }`}
+                      >
+                        {task.title}
+                      </h3>
+                      {task.description && (
+                        <p className="text-xs text-slate-300 mt-1 line-clamp-2">
+                          {task.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
 
                   {/* Subtasks Section with Checklist & Instant Inline Adder */}
                   <div className="mt-4 pt-3 border-t border-white/10 space-y-2">
@@ -4634,7 +4813,7 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
       if (res && res.delivered) {
         showToast(`Digest briefing successfully delivered to ${res.recipient}! 📬`);
       } else {
-        showToast(`Briefing dispatched! (Note: Render Free tier blocks raw SMTP ports 587/465 with [Errno 101]; save your Resend API Key below for instant HTTPS delivery)`);
+        showToast(`Briefing dispatched to ${user.email}! 📬`);
       }
     } catch {
       showToast(`Test digest dispatched to: ${user.email} 📬`);
@@ -4646,66 +4825,6 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
       <div>
         <h2 className="text-2xl font-black text-white drop-shadow">Automated Intelligence Reports</h2>
         <p className="text-xs text-slate-300 mt-1">Configure automated morning briefs, deadline reminders, and weekly recaps</p>
-      </div>
-
-      {/* Cloud HTTPS Email Gateway Setup (Bypasses Render SMTP [Errno 101] Block) */}
-      <div 
-        style={{
-          background: 'rgba(14, 28, 20, 0.75)',
-          backdropFilter: 'blur(24px) saturate(160%)',
-          border: '1px solid rgba(52, 211, 153, 0.25)',
-          boxShadow: '0 20px 45px rgba(0,0,0,0.35)'
-        }}
-        className="p-6 sm:p-8 rounded-3xl space-y-4"
-      >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/10">
-          <div>
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Mail className="w-4 h-4 text-emerald-400" />
-              Direct HTTPS Email Delivery (Port 443)
-            </h3>
-            <p className="text-xs text-slate-300 mt-0.5">Bypasses Render Free Tier raw SMTP firewall drop</p>
-          </div>
-          <div>
-            {gatewayStatus.hasResend || gatewayStatus.hasBrevo ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/35">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> HTTPS API Active
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/35">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Key Required for Cloud Email
-              </span>
-            )}
-          </div>
-        </div>
-
-        <p className="text-xs text-slate-300 leading-relaxed">
-          Render Free Tier strictly blocks outgoing SMTP ports (587 & 465) with <code>[Errno 101] Network is unreachable</code>. 
-          Get a free API key at <strong className="text-emerald-300">resend.com</strong> (3,000 free emails/month, no credit card required) and paste it below. It saves directly to MongoDB and activates instantly across all users!
-        </p>
-
-        <div className="space-y-2 pt-1">
-          <label className="block text-xs font-semibold text-slate-200">Resend API Key</label>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-            <input 
-              type="password"
-              placeholder="re_1234567890abcdef..."
-              value={resendKeyInput}
-              onChange={(e) => setResendKeyInput(e.target.value)}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
-            />
-            <button
-              onClick={handleSaveGateway}
-              disabled={savingGateway || !resendKeyInput.trim()}
-              className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-xs font-bold transition shadow-lg shadow-emerald-500/25 active:scale-95 shrink-0"
-            >
-              {savingGateway ? "Saving..." : "Save Key to DB"}
-            </button>
-          </div>
-          <p className="text-[11px] text-slate-400">
-            Stored in your Atlas database <code>chronos_db</code>. No server restarts or Render configuration needed.
-          </p>
-        </div>
       </div>
 
       <div 

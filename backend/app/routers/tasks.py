@@ -88,6 +88,15 @@ async def update_task(task_id: str, data: TaskUpdate, current_user: dict = Depen
     update_data = {k: v for k, v in data.dict(exclude_unset=True).items() if v is not None}
     update_data["updatedAt"] = datetime.utcnow()
     
+    # Auto-check all subtasks when task status is updated to Completed
+    if update_data.get("status") == "Completed" and "subtasks" not in update_data:
+        existing_subtasks = existing.get("subtasks", []) or []
+        if existing_subtasks:
+            update_data["subtasks"] = [
+                {**st, "completed": True} if isinstance(st, dict) else {"id": f"st-{idx}", "text": str(st), "completed": True}
+                for idx, st in enumerate(existing_subtasks)
+            ]
+    
     await tasks_col.update_one({"_id": task_id, "userId": user_id}, {"$set": update_data})
     updated = await tasks_col.find_one({"_id": task_id, "userId": user_id}) or existing
     updated.update(update_data)
@@ -110,9 +119,21 @@ async def toggle_task_completion(task_id: str, current_user: dict = Depends(get_
         raise HTTPException(status_code=404, detail="Task not found")
         
     next_status = "In Progress" if task.get("status") == "Completed" else "Completed"
+    update_doc = {"status": next_status, "updatedAt": datetime.utcnow()}
+    
+    # When completing task, automatically check all subtasks and save to database
+    subtasks = task.get("subtasks", []) or []
+    if next_status == "Completed" and subtasks:
+        updated_subtasks = [
+            {**st, "completed": True} if isinstance(st, dict) else {"id": f"st-{idx}", "text": str(st), "completed": True}
+            for idx, st in enumerate(subtasks)
+        ]
+        update_doc["subtasks"] = updated_subtasks
+        task["subtasks"] = updated_subtasks
+        
     await tasks_col.update_one(
         {"_id": task_id, "userId": user_id},
-        {"$set": {"status": next_status, "updatedAt": datetime.utcnow()}}
+        {"$set": update_doc}
     )
     task["status"] = next_status
     return TaskResponse(**serialize_task(task))
