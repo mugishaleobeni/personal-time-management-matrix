@@ -6,7 +6,7 @@ import {
   ChevronRight, ChevronDown, Check, Folder, Tag, Download, 
   Sparkles, Flame, Shield, LogOut, Coffee, Timer as TimerIcon,
   Layers, FileText, CheckSquare, ListTodo, Star, Compass, RefreshCw,
-  X, Zap, ExternalLink, Image as ImageIcon, Upload, Save, Eye, BookOpen, Copy
+  X, Zap, ExternalLink, Image as ImageIcon, Upload, Save, Eye, BookOpen, Copy, Lock
 } from 'lucide-react';
 import { Button as TButton, Tag as TTag, Badge as TBadge, Tooltip as TTooltip, Switch as TSwitch, Progress as TProgress } from 'tdesign-react';
 import { api } from './services/api';
@@ -39,11 +39,36 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [activeSubPage, setActiveSubPage] = useState('Overview');
   const [themeMode, setThemeMode] = useState('dark');
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => !!api.getToken());
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authView, setAuthView] = useState('login');
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [headerSearchQuery, setHeaderSearchQuery] = useState('');
+
+  // Validate existing session token on application load
+  useEffect(() => {
+    async function verifySession() {
+      const token = api.getToken();
+      if (!token) {
+        setIsAuthenticated(false);
+        return;
+      }
+      try {
+        const me = await api.getMe();
+        if (me && me.email) {
+          setUser(me);
+          setIsAuthenticated(true);
+        } else {
+          api.setToken(null);
+          setIsAuthenticated(false);
+        }
+      } catch (err) {
+        // If server is temporarily restarting or unreachable, keep offline session if token exists
+        console.warn("Session verification note:", err);
+      }
+    }
+    verifySession();
+  }, []);
 
   // ExBOS Floating Navigation States
   const [modulePanelOpen, setModulePanelOpen] = useState(false);
@@ -54,6 +79,7 @@ export default function App() {
 
   // Synchronize with FastAPI backend on startup & periodic real-time background refresh
   useEffect(() => {
+    if (!isAuthenticated) return;
     let isMounted = true;
     async function loadData() {
       try {
@@ -79,7 +105,7 @@ export default function App() {
       isMounted = false;
       clearInterval(syncInterval);
     };
-  }, []);
+  }, [isAuthenticated]);
 
   // Real-time Clock synced to Africa/Kigali (CAT)
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -425,6 +451,33 @@ export default function App() {
   // Active module calculation for indicator position
   const activeModuleIndex = navModules.findIndex(m => m.id === activeTab);
   const activeModuleObj = navModules[activeModuleIndex] || navModules[0];
+
+  const handleLogout = () => {
+    api.setToken(null);
+    localStorage.removeItem('chronos_token');
+    localStorage.removeItem('zen_user');
+    setIsAuthenticated(false);
+    setAuthView('login');
+    showToast("Signed out successfully. Please log in or create an account.");
+  };
+
+  // If user is not authenticated, render the dedicated Landing Page & Auth Gateway
+  if (!isAuthenticated) {
+    return (
+      <LandingAuthPage 
+        user={user}
+        setUser={setUser}
+        setIsAuthenticated={setIsAuthenticated}
+        currentTime={currentTime}
+        showToast={showToast}
+        themeMode={themeMode}
+        setThemeMode={setThemeMode}
+        authView={authView}
+        setAuthView={setAuthView}
+        toastMessage={toastMessage}
+      />
+    );
+  }
 
   return (
     <div className="relative min-h-screen w-full transition-colors duration-300 font-sans text-slate-100 selection:bg-emerald-500 selection:text-white overflow-x-hidden">
@@ -790,6 +843,17 @@ export default function App() {
                   className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-1 ring-emerald-400/50"
                 />
               </button>
+
+              {/* Sign Out Button in Header */}
+              <button
+                type="button"
+                onClick={handleLogout}
+                title="Sign Out of Workspace"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 hover:text-white text-xs font-semibold transition active:scale-95"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Sign Out</span>
+              </button>
             </div>
           </header>
 
@@ -914,6 +978,7 @@ export default function App() {
                 setAuthView={setAuthView}
                 onPhotoChange={handleProfilePhotoChange}
                 fileInputRef={fileInputRef}
+                onLogout={handleLogout}
               />
             )}
           </div>
@@ -3776,7 +3841,7 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
 function SettingsProfileView({
   user, setUser, themeMode, setThemeMode,
   tasks, routines, notes, setTasks, setRoutines, setNotes, showToast, setAuthModalOpen,
-  setAuthView, onPhotoChange, fileInputRef
+  setAuthView, onPhotoChange, fileInputRef, onLogout
 }) {
   const [profileName, setProfileName] = useState(user.name);
   const [profileRole, setProfileRole] = useState(user.role);
@@ -4017,6 +4082,13 @@ function SettingsProfileView({
             className="flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/20 text-slate-300 hover:text-white px-4 py-2.5 rounded-xl text-xs font-semibold transition active:scale-95"
           >
             <Shield className="w-4 h-4 text-slate-400" /> Reset Password
+          </button>
+          <button 
+            type="button"
+            onClick={onLogout}
+            className="flex items-center gap-2 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 px-4 py-2.5 rounded-xl text-xs font-bold transition active:scale-95"
+          >
+            <LogOut className="w-4 h-4 text-rose-400" /> Sign Out
           </button>
         </div>
       </div>
@@ -4348,6 +4420,504 @@ function AuthModal({ isOpen, onClose, authView, setAuthView, user, setUser, show
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ==========================================================
+// 8. LANDING & AUTHENTICATION GATEWAY VIEW (Required to Access)
+// ==========================================================
+
+function LandingAuthPage({
+  user,
+  setUser,
+  setIsAuthenticated,
+  currentTime,
+  showToast,
+  themeMode,
+  setThemeMode,
+  authView,
+  setAuthView,
+  toastMessage
+}) {
+  const [nameInput, setNameInput] = useState('');
+  const [emailInput, setEmailInput] = useState('');
+  const [passInput, setPassInput] = useState('');
+  const [confirmPassInput, setConfirmPassInput] = useState('');
+  const [recoveryCodeInput, setRecoveryCodeInput] = useState('');
+  const [forgotStep, setForgotStep] = useState('request'); // 'request' | 'verify'
+  const [loading, setLoading] = useState(false);
+  const [receivedCode, setReceivedCode] = useState('');
+
+  const handleFillDemo = () => {
+    setEmailInput('alex.sterling@devmatrix.io');
+    setPassInput('chronos2026');
+    setAuthView('login');
+    showToast("Filled demo credentials (Alex Sterling)");
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      if (authView === 'login') {
+        if (!emailInput.trim() || !passInput) {
+          showToast("Please enter both email and password.");
+          setLoading(false);
+          return;
+        }
+        const res = await api.login(emailInput.trim(), passInput);
+        setUser(res.user);
+        setIsAuthenticated(true);
+        showToast(`Welcome back, ${res.user.name}! 🚀`);
+      } else if (authView === 'register') {
+        if (!nameInput.trim()) {
+          showToast("Please enter your full names.");
+          setLoading(false);
+          return;
+        }
+        if (!emailInput.trim()) {
+          showToast("Please enter a valid email address.");
+          setLoading(false);
+          return;
+        }
+        if (passInput.length < 6) {
+          showToast("Password must be at least 6 characters long.");
+          setLoading(false);
+          return;
+        }
+        if (passInput !== confirmPassInput) {
+          showToast("Passwords do not match. Please re-enter.");
+          setLoading(false);
+          return;
+        }
+        const res = await api.register(nameInput.trim(), emailInput.trim(), passInput);
+        setUser(res.user);
+        setIsAuthenticated(true);
+        showToast(`Welcome, ${res.user.name}! Your workspace is ready.`);
+      } else if (authView === 'forgot') {
+        if (forgotStep === 'request') {
+          if (!emailInput.trim()) {
+            showToast("Please enter your account email address.");
+            setLoading(false);
+            return;
+          }
+          const res = await api.forgotPassword(emailInput.trim());
+          if (res.code) {
+            setReceivedCode(res.code);
+            setRecoveryCodeInput(res.code);
+          }
+          setForgotStep('verify');
+          showToast(`Recovery code sent to ${emailInput.trim()}! Check inbox.`);
+        } else {
+          if (!recoveryCodeInput.trim()) {
+            showToast("Please enter the 6-digit recovery code.");
+            setLoading(false);
+            return;
+          }
+          if (passInput.length < 6) {
+            showToast("New password must be at least 6 characters long.");
+            setLoading(false);
+            return;
+          }
+          if (passInput !== confirmPassInput) {
+            showToast("Passwords do not match. Please confirm password.");
+            setLoading(false);
+            return;
+          }
+          const res = await api.resetPassword(emailInput.trim(), recoveryCodeInput.trim(), passInput);
+          showToast(res.message || "Password updated successfully! Please sign in.");
+          setAuthView('login');
+          setForgotStep('request');
+          setPassInput('');
+          setConfirmPassInput('');
+        }
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Authentication error occurred");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="relative min-h-screen w-full bg-[#08130e] text-slate-100 flex flex-col font-sans overflow-x-hidden selection:bg-emerald-500 selection:text-white">
+      {/* Ambient Glow Orbs */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        <div className="absolute top-0 right-1/4 w-[500px] h-[500px] rounded-full blur-[120px] bg-emerald-600/15" />
+        <div className="absolute -bottom-20 -left-20 w-[600px] h-[600px] rounded-full blur-[130px] bg-emerald-700/20" />
+        <div className="absolute top-1/2 left-1/3 w-[450px] h-[450px] rounded-full blur-[100px] bg-emerald-500/10" />
+      </div>
+
+      {/* Top Navbar */}
+      <header className="relative z-20 w-full px-6 sm:px-10 h-16 sm:h-20 flex items-center justify-between border-b border-emerald-500/15 backdrop-blur-md bg-black/20">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/30">
+            <Sparkles className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-base sm:text-lg font-black tracking-tight text-white">CHRONOS OS</span>
+              <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                v2.4
+              </span>
+            </div>
+            <p className="text-[10px] text-emerald-400/80 font-medium">Personal Time Management Matrix</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 sm:gap-4">
+          {/* Live Rwanda CAT Clock */}
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 font-mono text-xs font-bold shadow-inner">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>{currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+            <span className="text-[10px] text-emerald-400/80 font-sans uppercase">CAT</span>
+          </div>
+
+          {/* Quick Tab Switchers in Nav */}
+          <div className="flex items-center gap-1.5 p-1 rounded-full bg-white/5 border border-white/10">
+            <button
+              onClick={() => { setAuthView('login'); setForgotStep('request'); }}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition ${
+                authView === 'login'
+                  ? 'bg-emerald-500 text-white shadow-md'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              onClick={() => { setAuthView('register'); setForgotStep('request'); }}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition ${
+                authView === 'register'
+                  ? 'bg-emerald-500 text-white shadow-md'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              Create Account
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Landing & Auth Gateway Grid */}
+      <main className="relative z-10 flex-1 w-full max-w-7xl mx-auto px-4 sm:px-8 py-8 sm:py-12 flex flex-col lg:flex-row items-center justify-between gap-10 lg:gap-14">
+        {/* Left Presentation & Architecture Column */}
+        <div className="w-full lg:w-7/12 space-y-6 sm:space-y-8 text-center lg:text-left">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold">
+            <Shield className="w-3.5 h-3.5" />
+            <span>Enterprise Workspace Authentication Required</span>
+          </div>
+
+          <div className="space-y-3">
+            <h1 className="text-3xl sm:text-5xl lg:text-5xl font-black text-white tracking-tight leading-[1.15]">
+              Master Your Time with the <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-emerald-400 to-teal-300">Chronos Matrix</span>.
+            </h1>
+            <p className="text-sm sm:text-base text-slate-300 max-w-2xl leading-relaxed mx-auto lg:mx-0">
+              A high-precision personal operating system unifying the Eisenhower Priority Matrix, live hourly African CAT scheduling, persistent markdown scratchpads, and Pomodoro focus rhythms in one cloud-synchronized dashboard.
+            </p>
+          </div>
+
+          {/* 4 Core Pillars Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-left pt-2">
+            <div className="p-4 rounded-2xl bg-white/[0.04] border border-emerald-500/20 backdrop-blur-sm space-y-1.5 hover:border-emerald-500/40 transition">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                <CheckSquare className="w-4 h-4" />
+                <span>Eisenhower Matrix</span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Triage priorities across Quadrants I-IV with automated checklist subtasks and instant completion tracking.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white/[0.04] border border-emerald-500/20 backdrop-blur-sm space-y-1.5 hover:border-emerald-500/40 transition">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                <Clock className="w-4 h-4" />
+                <span>Live Rwandan CAT Timeline</span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Dynamic hourly scheduler mapped to real calendar weeks with live "NOW" indicators and routine streaks.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white/[0.04] border border-emerald-500/20 backdrop-blur-sm space-y-1.5 hover:border-emerald-500/40 transition">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                <BookOpen className="w-4 h-4" />
+                <span>Knowledge Matrix</span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Markdown reader & scratchpad with debounced cloud auto-save, Ctrl+S shortcuts, and zero keystroke loss.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white/[0.04] border border-emerald-500/20 backdrop-blur-sm space-y-1.5 hover:border-emerald-500/40 transition">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                <TimerIcon className="w-4 h-4" />
+                <span>Pomodoro Focus Engine</span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Deep work sprints, cycle counters, and time tracking automatically linked to your active backlog tasks.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 text-[11px] text-slate-400 font-mono">
+            <span className="flex items-center gap-1.5 text-emerald-400">
+              <Check className="w-3.5 h-3.5" /> MongoDB Atlas Cloud
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1.5 text-emerald-400">
+              <Check className="w-3.5 h-3.5" /> Gmail SMTP Verification
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1.5 text-emerald-400">
+              <Check className="w-3.5 h-3.5" /> Gunicorn Production
+            </span>
+          </div>
+        </div>
+
+        {/* Right Auth Gateway Card */}
+        <div className="w-full lg:w-5/12 max-w-md">
+          <div 
+            style={{
+              background: 'rgba(14, 28, 20, 0.85)',
+              backdropFilter: 'blur(32px) saturate(160%)',
+              border: '1px solid rgba(52, 211, 153, 0.28)',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.6), 0 0 40px rgba(16, 185, 129, 0.12)'
+            }}
+            className="p-6 sm:p-8 rounded-[32px] space-y-6 animate-fadeIn"
+          >
+            {/* Header / Tabs */}
+            <div className="flex items-center justify-between pb-4 border-b border-white/10">
+              <div>
+                <h2 className="text-xl font-black text-white">
+                  {authView === 'login' && 'Sign In to Workspace'}
+                  {authView === 'register' && 'Create Your Account'}
+                  {authView === 'forgot' && 'Account Recovery'}
+                </h2>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  {authView === 'login' && 'Enter your credentials to access your dashboard'}
+                  {authView === 'register' && 'Register in seconds to start tracking your time'}
+                  {authView === 'forgot' && 'Reset your password via verified Gmail SMTP code'}
+                </p>
+              </div>
+            </div>
+
+            {/* Segmented Mode Selector */}
+            {authView !== 'forgot' && (
+              <div className="grid grid-cols-2 p-1 rounded-xl bg-black/40 border border-white/10 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setAuthView('login')}
+                  className={`py-2 rounded-lg text-xs font-bold transition ${
+                    authView === 'login'
+                      ? 'bg-emerald-500 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuthView('register')}
+                  className={`py-2 rounded-lg text-xs font-bold transition ${
+                    authView === 'register'
+                      ? 'bg-emerald-500 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Create Account
+                </button>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Register: Full Name */}
+              {authView === 'register' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Full Names</label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Jean Luc or Alex Sterling"
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Email Input */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Email Address</label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="email"
+                    required
+                    placeholder="name@example.com"
+                    value={emailInput}
+                    disabled={authView === 'forgot' && forgotStep === 'verify'}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60"
+                  />
+                </div>
+              </div>
+
+              {/* Forgot Password Step 2: Recovery Code */}
+              {authView === 'forgot' && forgotStep === 'verify' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-300">6-Digit Recovery Code</label>
+                    {receivedCode && (
+                      <span className="text-[10px] text-emerald-400 font-mono font-bold">Code: {receivedCode}</span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    placeholder="e.g. 582910"
+                    value={recoveryCodeInput}
+                    onChange={(e) => setRecoveryCodeInput(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-emerald-400/40 text-white font-mono text-sm tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              )}
+
+              {/* Password Input */}
+              {(authView !== 'forgot' || forgotStep === 'verify') && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-300">
+                      {authView === 'forgot' ? 'New Password' : 'Password'}
+                    </label>
+                    {authView === 'login' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthView('forgot');
+                          setForgotStep('request');
+                        }}
+                        className="text-[11px] text-emerald-400 hover:underline transition"
+                      >
+                        Forgot password?
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="password"
+                      required
+                      minLength={6}
+                      placeholder={authView === 'register' ? 'Minimum 6 characters' : 'Enter password'}
+                      value={passInput}
+                      onChange={(e) => setPassInput(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Confirm Password */}
+              {(authView === 'register' || (authView === 'forgot' && forgotStep === 'verify')) && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Confirm Password</label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="password"
+                      required
+                      minLength={6}
+                      placeholder="Re-enter password"
+                      value={confirmPassInput}
+                      onChange={(e) => setConfirmPassInput(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-bold text-xs shadow-lg shadow-emerald-500/30 transition active:scale-95 flex items-center justify-center gap-2 mt-2"
+              >
+                {loading ? (
+                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                ) : (
+                  <>
+                    <span>
+                      {authView === 'login' && 'Sign In to Workspace'}
+                      {authView === 'register' && 'Create Account & Enter'}
+                      {authView === 'forgot' && forgotStep === 'request' && 'Send Recovery Code'}
+                      {authView === 'forgot' && forgotStep === 'verify' && 'Reset Password & Sign In'}
+                    </span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Quick Demo Autofill Helper */}
+            {authView === 'login' && (
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={handleFillDemo}
+                  className="text-[11px] text-slate-400 hover:text-emerald-300 transition flex items-center justify-center gap-1.5 mx-auto"
+                >
+                  <Sparkles className="w-3 h-3 text-emerald-400" />
+                  <span>Click to auto-fill default demo account</span>
+                </button>
+              </div>
+            )}
+
+            {/* Footer Back Link for Forgot Password */}
+            {authView === 'forgot' && (
+              <div className="pt-2 text-center border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthView('login');
+                    setForgotStep('request');
+                  }}
+                  className="text-xs text-emerald-400 hover:underline transition"
+                >
+                  ← Return to Sign In
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+
+      {/* Landing Footer */}
+      <footer className="relative z-10 w-full py-6 px-6 sm:px-10 border-t border-emerald-500/15 text-center text-xs text-slate-400">
+        <p>© 2026 Chronos OS • Engineered for high-output architects, developers, and founders.</p>
+      </footer>
+
+      {/* Toast Notification Container */}
+      {toastMessage && (
+        <div 
+          style={{
+            background: 'rgba(16, 32, 22, 0.95)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(52, 211, 153, 0.3)',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.6)'
+          }}
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 text-white px-5 py-3 rounded-2xl animate-fadeIn text-xs sm:text-sm"
+        >
+          <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="font-semibold">{toastMessage}</span>
+        </div>
+      )}
     </div>
   );
 }
