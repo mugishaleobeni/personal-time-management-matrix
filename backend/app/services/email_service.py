@@ -37,9 +37,17 @@ def _send_smtp_sync(to_email: str, subject: str, text_content: str, html_content
             server.sendmail(from_addr, [to_email], msg.as_string())
         logger.info(f"Successfully delivered email '{subject}' to {to_email}")
         return True
-    except Exception as e:
-        logger.warning(f"SMTP delivery to {to_email} encountered issue: {e}")
-        return False
+    except Exception as e_starttls:
+        logger.warning(f"SMTP STARTTLS delivery to {to_email} encountered issue: {e_starttls}. Attempting SSL (Port 465) fallback...")
+        try:
+            with smtplib.SMTP_SSL(settings.SMTP_HOST, 465, timeout=12) as ssl_server:
+                ssl_server.login(user, pwd)
+                ssl_server.sendmail(from_addr, [to_email], msg.as_string())
+            logger.info(f"Successfully delivered email '{subject}' to {to_email} via SSL")
+            return True
+        except Exception as e_ssl:
+            logger.warning(f"SMTP SSL delivery to {to_email} also failed: {e_ssl}")
+            return False
 
 async def send_email_async(to_email: str, subject: str, text_content: str, html_content: Optional[str] = None) -> bool:
     """Asynchronous wrapper for SMTP sending to avoid blocking event loop."""
@@ -47,16 +55,16 @@ async def send_email_async(to_email: str, subject: str, text_content: str, html_
 
 async def send_password_reset_code(to_email: str, name: str, code: str) -> bool:
     """Dispatches a password reset email with the 6-digit verification code."""
-    subject = f"Chronos Security: Password Recovery Code [{code}]"
+    subject = f"Master Your Time: Password Recovery Code [{code}]"
     text_content = f"""Hello {name},
 
-You requested a password reset for your Chronos Workspace account.
+You requested a password reset for your Master Your Time account.
 
 Your 6-digit recovery code is: {code}
 
 This code will expire in 30 minutes. If you did not initiate this request, you can safely ignore this email.
 
-— Chronos OS Security Team"""
+— Master Your Time Security Team"""
 
     html_content = f"""
     <!DOCTYPE html>

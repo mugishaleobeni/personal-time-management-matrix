@@ -28,8 +28,12 @@ class DatabaseManager:
             logger.info("Connecting to MongoDB Atlas...")
             self.client = AsyncIOMotorClient(
                 settings.MONGODB_URI,
-                serverSelectionTimeoutMS=5000,
-                connectTimeoutMS=5000
+                maxPoolSize=50,
+                minPoolSize=10,
+                maxIdleTimeMS=45000,
+                connectTimeoutMS=2500,
+                serverSelectionTimeoutMS=2000,
+                waitQueueTimeoutMS=2500
             )
             self.db = self.client[settings.DATABASE_NAME]
             # Ping database to verify connection
@@ -53,15 +57,17 @@ class DatabaseManager:
             # Users collection: unique email
             await self.db.users.create_index("email", unique=True)
             
-            # Tasks collection: index by userId, status, dueDate
+            # Tasks collection: index by userId, status, dueDate, createdAt
             await self.db.tasks.create_index([("userId", 1), ("status", 1)])
+            await self.db.tasks.create_index([("userId", 1), ("createdAt", -1)])
             await self.db.tasks.create_index([("userId", 1), ("dueDate", 1)])
             
             # Routines collection: index by userId and period
             await self.db.routines.create_index([("userId", 1), ("period", 1)])
             
-            # Notes collection: index by userId, pinned, and updatedAt
+            # Notes collection: index by userId, pinned, category, and updatedAt
             await self.db.notes.create_index([("userId", 1), ("pinned", -1)])
+            await self.db.notes.create_index([("userId", 1), ("updatedAt", -1)])
             await self.db.notes.create_index([("userId", 1), ("category", 1)])
             
             # Timer logs / sessions: index by userId and timestamp

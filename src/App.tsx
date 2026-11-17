@@ -4,7 +4,7 @@ import {
   Plus, Trash2, Edit3, Search, Filter, Bookmark, AlertCircle, 
   BarChart3, Settings, User, Mail, Bell, Sun, Moon, ArrowRight, 
   ChevronRight, ChevronDown, Check, Folder, Tag, Download, 
-  Sparkles, Flame, Shield, LogOut, Coffee, Timer as TimerIcon,
+  Sparkles, Shield, LogOut, Coffee, Timer as TimerIcon,
   Layers, FileText, CheckSquare, ListTodo, Star, Compass, RefreshCw,
   X, Zap, ExternalLink, Image as ImageIcon, Upload, Save, Eye, BookOpen, Copy, Lock,
   Volume2, Sliders, Smartphone
@@ -158,6 +158,16 @@ export default function App() {
         localStorage.removeItem('zen_routines');
         return [];
       }
+      const todayStr = new Date().toISOString().split('T')[0];
+      const lastActiveDate = localStorage.getItem('zen_last_active_date');
+      if (lastActiveDate !== todayStr) {
+        localStorage.setItem('zen_last_active_date', todayStr);
+        // Automatically reset habit checks for each new day
+        return parsed.map((r: any) => ({
+          ...r,
+          completed: r.lastCompletedDate === todayStr ? r.completed : false
+        }));
+      }
       return parsed;
     } catch {
       return [];
@@ -222,7 +232,7 @@ export default function App() {
     {
       id: 'routine',
       label: 'Daily Routine',
-      icon: Flame,
+      icon: CheckCircle2,
       sub: ['Morning Ritual', 'Afternoon Habits', 'Evening Reflection', 'Streaks']
     },
     {
@@ -261,7 +271,7 @@ export default function App() {
   const quickActions = [
     { label: 'New Task', icon: Plus, action: () => { setActiveTab('tasks'); showToast("Switched to task creator"); } },
     { label: 'Start Timer', icon: Play, action: () => { setActiveTab('timer'); setTimerStatus('running'); showToast("Initiated focus timer!"); } },
-    { label: 'Add Habit', icon: Flame, action: () => { setActiveTab('routine'); showToast("Opening Habit routine builder"); } },
+    { label: 'Add Habit', icon: CheckCircle2, action: () => { setActiveTab('routine'); showToast("Opening Habit routine builder"); } },
     { label: 'New Note', icon: FileText, action: () => { setActiveTab('notes'); showToast("Opening Notebook draft"); } },
     { label: 'Week 42', icon: Calendar, action: () => { setActiveTab('calendar'); showToast("Navigated to Week 42 view"); } },
     { label: 'Send Digest', icon: Mail, action: () => { setActiveTab('notifications'); showToast("Readying email brief dispatch"); } }
@@ -450,6 +460,94 @@ export default function App() {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const isSyncingRef = useRef(false);
+
+  // Offline queue manager: enqueues task operations when offline
+  const enqueueOfflineTaskAction = (action: { type: string; payload: any }) => {
+    try {
+      const raw = localStorage.getItem('zen_offline_queue');
+      const queue = raw ? JSON.parse(raw) : [];
+      queue.push({
+        ...action,
+        id: `act-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        timestamp: Date.now()
+      });
+      localStorage.setItem('zen_offline_queue', JSON.stringify(queue));
+    } catch (e) {
+      console.warn("Failed to enqueue offline action", e);
+    }
+  };
+
+  const processOfflineQueue = async () => {
+    if (isSyncingRef.current || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
+    const rawQueue = localStorage.getItem('zen_offline_queue');
+    if (!rawQueue) return;
+    try {
+      const queue = JSON.parse(rawQueue);
+      if (!Array.isArray(queue) || queue.length === 0) return;
+      isSyncingRef.current = true;
+      const remaining: any[] = [];
+      let syncedCount = 0;
+
+      for (const item of queue) {
+        try {
+          if (item.type === 'create_task') {
+            await api.createTask(item.payload);
+            syncedCount++;
+          } else if (item.type === 'update_task') {
+            await api.updateTask(item.payload.id, item.payload.updates);
+            syncedCount++;
+          } else if (item.type === 'toggle_task') {
+            await api.toggleTask(item.payload.id);
+            syncedCount++;
+          } else if (item.type === 'delete_task') {
+            await api.deleteTask(item.payload.id);
+            syncedCount++;
+          }
+        } catch (err) {
+          remaining.push(item);
+        }
+      }
+
+      localStorage.setItem('zen_offline_queue', JSON.stringify(remaining));
+      if (syncedCount > 0) {
+        showToast(`Synced ${syncedCount} offline task changes to database!`);
+      }
+    } catch (e) {
+      console.warn("Error processing offline sync queue", e);
+    } finally {
+      isSyncingRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      showToast("Online connection restored! Syncing offline changes...");
+      processOfflineQueue();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      showToast("Offline mode active. Your tasks and changes are saved locally.");
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    const interval = setInterval(() => {
+      if (navigator.onLine) {
+        processOfflineQueue();
+      }
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      clearInterval(interval);
+    };
+  }, []);
+
   const toggleTaskCompletion = (taskId) => {
     setTasks(prev => prev.map(t => {
       if (t.id === taskId) {
@@ -458,24 +556,28 @@ export default function App() {
       }
       return t;
     }));
-    api.toggleTask(taskId).catch(err => console.warn("Task toggle error:", err));
+    api.toggleTask(taskId).catch(() => {
+      enqueueOfflineTaskAction({ type: 'toggle_task', payload: { id: taskId } });
+    });
   };
 
   const toggleRoutine = (routineId) => {
+    const todayStr = new Date().toISOString().split('T')[0];
     setRoutines(prev => prev.map(r => {
       if (r.id === routineId) {
         const nextState = !r.completed;
         return {
           ...r,
           completed: nextState,
-          streak: nextState ? r.streak + 1 : Math.max(0, r.streak - 1)
+          lastCompletedDate: nextState ? todayStr : r.lastCompletedDate,
+          streak: nextState ? (r.streak || 0) + 1 : Math.max(0, (r.streak || 1) - 1)
         };
       }
       return r;
     }));
     api.toggleRoutine(routineId).then(updated => {
       if (updated) {
-        setRoutines(prev => prev.map(r => r.id === routineId ? updated : r));
+        setRoutines(prev => prev.map(r => r.id === routineId ? { ...updated, lastCompletedDate: todayStr } : r));
       }
     }).catch(err => console.warn("Routine toggle error:", err));
   };
@@ -868,6 +970,17 @@ export default function App() {
                 </svg>
               </button>
 
+              {/* Online / Offline Sync Badge */}
+              {isOnline ? (
+                <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[10px] text-emerald-300 font-semibold" title="Connected & Synced with Database">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Online
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/20 border border-amber-500/35 text-[10px] text-amber-300 font-semibold animate-pulse" title="Operating offline. Changes queued for cloud sync.">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Offline (Sync Queued)
+                </span>
+              )}
+
               {/* Circular Avatar */}
               <button
                 type="button"
@@ -934,6 +1047,8 @@ export default function App() {
                 setActiveTab={setActiveTab}
                 showToast={showToast}
                 themeMode={themeMode}
+                enqueueOfflineTaskAction={enqueueOfflineTaskAction}
+                isOnline={isOnline}
               />
             )}
 
@@ -1203,7 +1318,7 @@ function DashboardView({
       >
         <div className="relative z-10 max-w-2xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/35 text-[11px] sm:text-xs font-semibold text-emerald-300 mb-3 sm:mb-4 backdrop-blur-sm">
-            <Flame className="w-3.5 h-3.5 text-emerald-400" /> Dose of Culture • 14-Day Flow
+            <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> Daily Momentum • 14-Day Flow
           </div>
           <h1 className="text-xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-white leading-tight drop-shadow-md">
             HELLO, WELCOME BACK TO MASTER YOUR TIME, <span className="text-emerald-400">{user.name.split(' ')[0]}</span>.
@@ -1295,7 +1410,7 @@ function DashboardView({
         >
           <div className="flex items-center justify-between text-emerald-200/80 text-xs font-semibold">
             <span>Daily Routines</span>
-            <Flame className="w-4 h-4 text-emerald-400" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="mt-3 sm:mt-4 flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-black text-white">
@@ -1708,8 +1823,8 @@ function DashboardView({
                   </div>
 
                   <div className="flex items-center gap-1 text-emerald-400 font-extrabold text-xs shrink-0 ml-2">
-                    <Flame className="w-3.5 h-3.5 fill-current" />
-                    <span>{routine.streak}d</span>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>{routine.streak}d streak</span>
                   </div>
                 </div>
               )))}
@@ -1771,7 +1886,7 @@ function DashboardView({
 // 2. TO-DO LIST VIEW (Full Glassmorphic Styling, Responsive)
 // ==========================================================
 
-function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, showToast, themeMode }) {
+function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, showToast, themeMode, enqueueOfflineTaskAction, isOnline }: any) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedPriority, setSelectedPriority] = useState('All');
@@ -1848,10 +1963,14 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
       try {
         const updated = await api.updateTask(editingTask.id, payload);
         setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...updated } : t));
+        showToast("Task updated & synced!");
       } catch {
         setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...payload } : t));
+        if (enqueueOfflineTaskAction) {
+          enqueueOfflineTaskAction({ type: 'update_task', payload: { id: editingTask.id, updates: payload } });
+        }
+        showToast("Task updated locally (queued for online sync)!");
       }
-      showToast("Task updated successfully!");
     } else {
       try {
         const created = await api.createTask({
@@ -1859,6 +1978,7 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
           timeSpentSeconds: 0
         });
         setTasks(prev => [created, ...prev]);
+        showToast("New task created & synced!");
       } catch {
         const newTask = {
           id: `tsk-${Date.now()}`,
@@ -1866,8 +1986,11 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
           timeSpentSeconds: 0
         };
         setTasks(prev => [newTask, ...prev]);
+        if (enqueueOfflineTaskAction) {
+          enqueueOfflineTaskAction({ type: 'create_task', payload: newTask });
+        }
+        showToast("Task saved locally (queued for online sync)!");
       }
-      showToast("New task created!");
     }
 
     setModalOpen(false);
@@ -1877,7 +2000,11 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
 
   const handleDelete = (id) => {
     setTasks(prev => prev.filter(t => t.id !== id));
-    api.deleteTask(id).catch(err => console.warn("Task delete error:", err));
+    api.deleteTask(id).catch(() => {
+      if (enqueueOfflineTaskAction) {
+        enqueueOfflineTaskAction({ type: 'delete_task', payload: { id } });
+      }
+    });
     showToast("Task removed.");
   };
 
@@ -1892,7 +2019,11 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
       return t;
     }));
     if (updatedSubtasks) {
-      api.updateTask(taskId, { subtasks: updatedSubtasks }).catch(() => {});
+      api.updateTask(taskId, { subtasks: updatedSubtasks }).catch(() => {
+        if (enqueueOfflineTaskAction) {
+          enqueueOfflineTaskAction({ type: 'update_task', payload: { id: taskId, updates: { subtasks: updatedSubtasks } } });
+        }
+      });
     }
   };
 
@@ -1901,8 +2032,19 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
       {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl sm:text-2xl font-black text-white drop-shadow">To-Do Task Command</h2>
-          <p className="text-xs text-slate-300 mt-1">Organize priorities, deadlines, and multi-tier subtasks</p>
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <h2 className="text-xl sm:text-2xl font-black text-white drop-shadow">To-Do Task Command</h2>
+            {isOnline === false ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/35 text-[10px] font-bold animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Offline Mode (Auto-saving locally)
+              </span>
+            ) : (
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Cloud Synced
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-slate-300">Organize priorities, deadlines, and multi-tier subtasks (Works offline)</p>
         </div>
 
         <button 
@@ -2832,6 +2974,21 @@ function DailyRoutineView({ routines, setRoutines, toggleRoutine, showToast, the
   const completedCount = routines.filter(r => r.completed).length;
   const progressPercent = Math.round((completedCount / (routines.length || 1)) * 100);
 
+  const isRoutineMissed = (routine) => {
+    if (routine.completed) return false;
+    if (!routine.time) return false;
+    const now = new Date();
+    const parts = routine.time.split(':');
+    if (parts.length < 2) return false;
+    const [h, m] = parts.map(Number);
+    if (isNaN(h) || isNaN(m)) return false;
+    const routineMinutes = h * 60 + m;
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    return currentMinutes > routineMinutes;
+  };
+
+  const missedRoutines = routines.filter(r => isRoutineMissed(r));
+
   const handleAddRoutine = async (e) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
@@ -2875,7 +3032,7 @@ function DailyRoutineView({ routines, setRoutines, toggleRoutine, showToast, the
         <div>
           <div className="flex items-center gap-2 mb-2">
             <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
-              <Flame className="w-3.5 h-3.5 text-emerald-400" />
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
               Daily Habit Protocol
             </span>
             <span className="text-xs text-slate-400">Consistent execution engine</span>
@@ -2896,6 +3053,21 @@ function DailyRoutineView({ routines, setRoutines, toggleRoutine, showToast, the
           </button>
         </div>
       </div>
+
+      {/* Missed Daily Habits Banner */}
+      {missedRoutines.length > 0 && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/15 border border-amber-500/35 flex items-start gap-3 shadow-lg">
+          <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5 animate-pulse" />
+          <div className="flex-1">
+            <h4 className="text-xs sm:text-sm font-bold text-amber-300">
+              {missedRoutines.length} Missed Daily {missedRoutines.length === 1 ? 'Ritual' : 'Rituals'} Today
+            </h4>
+            <p className="text-[11px] sm:text-xs text-amber-200/80 mt-0.5">
+              Scheduled time passed: {missedRoutines.map(r => `${r.title} (${r.time})`).join(', ')}. Complete them now to protect your momentum!
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Filter Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
@@ -2936,7 +3108,13 @@ function DailyRoutineView({ routines, setRoutines, toggleRoutine, showToast, the
               <label className="block text-[11px] font-semibold text-slate-300 mb-1">Period</label>
               <select
                 value={newPeriod}
-                onChange={(e) => setNewPeriod(e.target.value)}
+                onChange={(e) => {
+                  const p = e.target.value;
+                  setNewPeriod(p);
+                  if (p === 'Morning') setNewTime('07:00');
+                  else if (p === 'Afternoon') setNewTime('13:00');
+                  else if (p === 'Evening') setNewTime('20:00');
+                }}
                 className="w-full px-3.5 py-2 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs focus:ring-2 focus:ring-emerald-500/50 shadow-inner focus:outline-none"
               >
                 <option value="Morning">Morning</option>
@@ -2986,7 +3164,7 @@ function DailyRoutineView({ routines, setRoutines, toggleRoutine, showToast, the
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredRoutines.length === 0 ? (
           <div style={cardStyle} className="col-span-full p-10 text-center rounded-[24px]">
-            <Flame className="w-8 h-8 text-emerald-400 mx-auto mb-2 opacity-60" />
+            <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2 opacity-60" />
             <p className="text-sm font-semibold text-slate-300">No daily rituals found.</p>
             <button
               onClick={() => setNewRoutineOpen(true)}
@@ -3022,12 +3200,22 @@ function DailyRoutineView({ routines, setRoutines, toggleRoutine, showToast, the
                     <Clock className="w-3 h-3 text-slate-400" />
                     {routine.time} ({routine.duration}m)
                   </span>
+                  {isRoutineMissed(routine) && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/35 flex items-center gap-1 animate-pulse">
+                      <AlertCircle className="w-3 h-3 text-amber-400" /> Missed • Scheduled {routine.time}
+                    </span>
+                  )}
+                  {routine.completed && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Completed Today
+                    </span>
+                  )}
                 </div>
                 <h4 className={`text-sm font-semibold truncate ${routine.completed ? "text-slate-400 line-through" : "text-white"}`}>
                   {routine.title}
                 </h4>
                 <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-300">
-                  <Flame className="w-3.5 h-3.5 text-amber-400" />
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                   <span className="font-bold">{routine.streak} day streak</span>
                 </div>
               </div>
@@ -3099,6 +3287,41 @@ function NotebookView({ notes, setNotes, showToast, themeMode }) {
     }
   }, [activeNote?.id]);
 
+  // Keep ref synchronized for immediate unmount/tab-switch flush
+  const currentDraftRef = useRef({
+    id: activeNote?.id,
+    title: draftTitle,
+    content: draftContent,
+    category: draftCategory,
+    tags: draftTags
+  });
+
+  useEffect(() => {
+    currentDraftRef.current = {
+      id: activeNote?.id,
+      title: draftTitle,
+      content: draftContent,
+      category: draftCategory,
+      tags: draftTags
+    };
+  }, [activeNote?.id, draftTitle, draftContent, draftCategory, draftTags]);
+
+  // Flush unsaved draft to backend API and localStorage when switching tabs or unmounting
+  useEffect(() => {
+    return () => {
+      const d = currentDraftRef.current;
+      if (d && d.id) {
+        const payload = {
+          title: d.title.trim() || "Untitled Note",
+          content: d.content,
+          category: d.category || "Ideas",
+          tags: d.tags || []
+        };
+        api.updateNote(d.id, payload).catch(() => {});
+      }
+    };
+  }, []);
+
   const handleSaveNote = async (overrides = {}) => {
     if (!activeNote) return;
     setSaveStatus("saving");
@@ -3112,11 +3335,9 @@ function NotebookView({ notes, setNotes, showToast, themeMode }) {
       await api.updateNote(activeNote.id, payload);
       setNotes(prev => prev.map(n => n.id === activeNote.id ? { ...n, ...payload, updatedAt: "Just now" } : n));
       setSaveStatus("saved");
-      showToast("Note saved successfully");
     } catch (err) {
       setNotes(prev => prev.map(n => n.id === activeNote.id ? { ...n, ...payload, updatedAt: "Just now" } : n));
       setSaveStatus("saved");
-      showToast("Note saved locally");
     }
   };
 
@@ -3608,7 +3829,14 @@ function NotebookView({ notes, setNotes, showToast, themeMode }) {
                       <input
                         type="text"
                         value={draftTitle}
-                        onChange={(e) => setDraftTitle(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setDraftTitle(val);
+                          if (activeNote) {
+                            setNotes(prev => prev.map(n => n.id === activeNote.id ? { ...n, title: val, updatedAt: "Just now" } : n));
+                          }
+                        }}
+                        onBlur={() => handleSaveNote()}
                         placeholder="Note title..."
                         className="w-full text-base sm:text-lg font-bold bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       />
@@ -3666,7 +3894,14 @@ function NotebookView({ notes, setNotes, showToast, themeMode }) {
                     </div>
                     <textarea
                       value={draftContent}
-                      onChange={(e) => setDraftContent(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setDraftContent(val);
+                        if (activeNote) {
+                          setNotes(prev => prev.map(n => n.id === activeNote.id ? { ...n, content: val, updatedAt: "Just now" } : n));
+                        }
+                      }}
+                      onBlur={() => handleSaveNote()}
                       placeholder="Write notes, architecture plans, ideas, code snippets..."
                       rows={14}
                       className="w-full flex-1 p-4 rounded-xl bg-white/5 border border-white/10 text-slate-100 text-xs sm:text-sm font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none min-h-[300px]"
@@ -3850,12 +4085,12 @@ function CalendarScheduleView({ tasks, routines, showToast, themeMode }) {
                             className="p-2 sm:p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-200 font-semibold shadow-sm flex items-center justify-between cursor-pointer hover:bg-emerald-500/30 transition"
                           >
                             <div className="flex items-center gap-2 truncate pr-2">
-                              <Flame className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                               <span className="text-xs font-bold truncate">{r.title}</span>
                               <span className="text-[10px] text-emerald-300/80 font-mono">({r.duration}m habit)</span>
                             </div>
                             <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/30 text-emerald-300 shrink-0">
-                              {r.streak}🔥
+                              {r.streak}d streak
                             </span>
                           </div>
                         ))}
