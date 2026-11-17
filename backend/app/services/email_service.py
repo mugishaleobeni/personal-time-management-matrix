@@ -57,15 +57,29 @@ def _send_smtp_sync(to_email: str, subject: str, text_content: str, html_content
 
 async def send_email_async(to_email: str, subject: str, text_content: str, html_content: Optional[str] = None) -> bool:
     """Dispatches email via HTTPS REST API (Resend/Brevo on port 443) or falls back to SMTP."""
+    resend_key = settings.RESEND_API_KEY.strip()
+    brevo_key = settings.BREVO_API_KEY.strip()
+
+    # Dynamic lookup: Check if user configured an email gateway in MongoDB
+    if not resend_key and not brevo_key:
+        try:
+            from app.repository import get_col
+            gw_doc = await get_col("system_settings").find_one({"_id": "email_gateway"})
+            if gw_doc:
+                resend_key = (gw_doc.get("resendApiKey") or "").strip()
+                brevo_key = (gw_doc.get("brevoApiKey") or "").strip()
+        except Exception:
+            pass
+
     # 1. Resend HTTPS API (Port 443, never blocked by Render)
-    if settings.RESEND_API_KEY:
+    if resend_key:
         try:
             import httpx
             async with httpx.AsyncClient(timeout=8.0) as client:
                 res = await client.post(
                     "https://api.resend.com/emails",
                     headers={
-                        "Authorization": f"Bearer {settings.RESEND_API_KEY.strip()}",
+                        "Authorization": f"Bearer {resend_key}",
                         "Content-Type": "application/json"
                     },
                     json={
@@ -85,14 +99,14 @@ async def send_email_async(to_email: str, subject: str, text_content: str, html_
             logger.warning(f"Resend HTTPS error: {e}")
 
     # 2. Brevo (Sendinblue) HTTPS API (Port 443, never blocked by Render)
-    if settings.BREVO_API_KEY:
+    if brevo_key:
         try:
             import httpx
             async with httpx.AsyncClient(timeout=8.0) as client:
                 res = await client.post(
                     "https://api.brevo.com/v3/smtp/email",
                     headers={
-                        "api-key": settings.BREVO_API_KEY.strip(),
+                        "api-key": brevo_key,
                         "Content-Type": "application/json"
                     },
                     json={

@@ -326,6 +326,17 @@ class ApiService {
     });
   }
 
+  async getEmailGateway(): Promise<any> {
+    return this.request<any>('/notifications/gateway');
+  }
+
+  async saveEmailGateway(payload: { resendApiKey?: string; brevoApiKey?: string }): Promise<any> {
+    return this.request<any>('/notifications/gateway', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   // System
   async getSystemHealth(): Promise<any> {
     return this.request<any>('/system/health');

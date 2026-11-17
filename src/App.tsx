@@ -1751,6 +1751,14 @@ function DashboardView({
                         <span className="px-1.5 py-0.2 rounded-md bg-white/10 text-[9px] sm:text-[10px] font-bold text-slate-200">
                           {task.category}
                         </span>
+                        {task.subtasks && task.subtasks.length > 0 && (
+                          <>
+                            <span>•</span>
+                            <span className="font-mono text-emerald-300 font-semibold text-[10px]">
+                              {task.subtasks.filter((s: any) => s.completed).length}/{task.subtasks.length} subtasks
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1893,6 +1901,7 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<any>(null);
   const [newSubtaskText, setNewSubtaskText] = useState('');
+  const [quickSubtaskInputs, setQuickSubtaskInputs] = useState<Record<string, string>>({});
 
   const [formData, setFormData] = useState<any>({
     title: '',
@@ -1939,24 +1948,67 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
   const handleRemoveSubtaskFromForm = (subId: string) => {
     setFormData((prev: any) => ({
       ...prev,
-      subtasks: (prev.subtasks || []).filter((s: any) => s.id !== subId)
+      subtasks: (prev.subtasks || []).filter((s: any) => (s.id || s._id) !== subId)
     }));
   };
 
   const handleToggleSubtaskInForm = (subId: string) => {
     setFormData((prev: any) => ({
       ...prev,
-      subtasks: (prev.subtasks || []).map((s: any) => s.id === subId ? { ...s, completed: !s.completed } : s)
+      subtasks: (prev.subtasks || []).map((s: any) => (s.id || s._id) === subId ? { ...s, completed: !s.completed } : s)
     }));
+  };
+
+  const handleQuickAddSubtask = (taskId: string) => {
+    const text = (quickSubtaskInputs[taskId] || '').trim();
+    if (!text) return;
+
+    const newSub = {
+      id: `st-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      text,
+      completed: false
+    };
+
+    let updatedSubtasks: any[] = [];
+    setTasks(prev => prev.map(t => {
+      if (t.id === taskId) {
+        const nextSubtasks = [...(t.subtasks || []), newSub];
+        updatedSubtasks = nextSubtasks;
+        return { ...t, subtasks: nextSubtasks };
+      }
+      return t;
+    }));
+
+    setQuickSubtaskInputs(prev => ({ ...prev, [taskId]: '' }));
+
+    if (updatedSubtasks.length > 0) {
+      api.updateTask(taskId, { subtasks: updatedSubtasks }).catch(() => {
+        if (enqueueOfflineTaskAction) {
+          enqueueOfflineTaskAction({ type: 'update_task', payload: { id: taskId, updates: { subtasks: updatedSubtasks } } });
+        }
+      });
+      showToast("Subtask added & synced!");
+    }
   };
 
   const handleSaveTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim()) return;
 
+    // Automatically capture any subtask text typed in the input field
+    let finalSubtasks = [...(formData.subtasks || [])];
+    if (newSubtaskText.trim()) {
+      finalSubtasks.push({
+        id: `st-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        text: newSubtaskText.trim(),
+        completed: false
+      });
+      setNewSubtaskText('');
+    }
+
     const payload = {
       ...formData,
-      subtasks: formData.subtasks || []
+      subtasks: finalSubtasks
     };
 
     if (editingTask) {
@@ -2012,7 +2064,7 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
     let updatedSubtasks = null;
     setTasks(prev => prev.map(t => {
       if (t.id === taskId) {
-        const nextSubtasks = (t.subtasks || []).map(s => s.id === subtaskId ? { ...s, completed: !s.completed } : s);
+        const nextSubtasks = (t.subtasks || []).map(s => (s.id || s._id) === subtaskId ? { ...s, completed: !s.completed } : s);
         updatedSubtasks = nextSubtasks;
         return { ...t, subtasks: nextSubtasks };
       }
@@ -2204,35 +2256,70 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
                     {task.description}
                   </p>
 
-                  {/* Subtasks Section */}
-                  {totalSubtasks > 0 && (
-                    <div className="mt-4 pt-3 border-t border-white/10 space-y-2">
-                      <div className="flex items-center justify-between text-[11px] text-slate-300">
-                        <span>Subtasks checklist</span>
-                        <span className="text-emerald-300 font-mono font-bold">{completedSubtasks}/{totalSubtasks}</span>
-                      </div>
-                      <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
-                        <div className="bg-emerald-500 h-full rounded-full transition-all" style={{ width: `${progress}%` }} />
-                      </div>
-
-                      <div className="space-y-1.5 mt-2">
-                        {task.subtasks.map(sub => (
-                          <div 
-                            key={sub.id} 
-                            onClick={() => toggleSubtask(task.id, sub.id)}
-                            className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer hover:text-white"
-                          >
-                            <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
-                              sub.completed ? 'bg-emerald-500 border-emerald-500' : 'border-white/30'
-                            }`}>
-                              {sub.completed && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
-                            </div>
-                            <span className={sub.completed ? 'line-through text-slate-400' : ''}>{sub.text}</span>
-                          </div>
-                        ))}
-                      </div>
+                  {/* Subtasks Section with Checklist & Instant Inline Adder */}
+                  <div className="mt-4 pt-3 border-t border-white/10 space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-slate-300">
+                      <span className="font-semibold flex items-center gap-1.5 text-slate-200">
+                        <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
+                        Subtasks Checklist
+                      </span>
+                      <span className="text-emerald-300 font-mono font-bold text-xs">{completedSubtasks}/{totalSubtasks}</span>
                     </div>
-                  )}
+
+                    {totalSubtasks > 0 && (
+                      <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-emerald-500 h-full rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
+                      </div>
+                    )}
+
+                    {totalSubtasks > 0 && (
+                      <div className="space-y-1.5 mt-2 max-h-40 overflow-y-auto pr-1">
+                        {task.subtasks.map((sub: any, sIdx: number) => {
+                          const sText = typeof sub === 'string' ? sub : (sub.text || sub.title || 'Checklist item');
+                          const sCompleted = typeof sub === 'object' ? !!sub.completed : false;
+                          const sId = typeof sub === 'object' && (sub.id || sub._id) ? (sub.id || sub._id) : `st-${sIdx}`;
+                          return (
+                            <div 
+                              key={sId} 
+                              onClick={() => toggleSubtask(task.id, sId)}
+                              className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer hover:text-white group/sub"
+                            >
+                              <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition ${
+                                sCompleted ? 'bg-emerald-500 border-emerald-500' : 'border-white/30 group-hover/sub:border-emerald-400'
+                              }`}>
+                                {sCompleted && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
+                              </div>
+                              <span className={`truncate ${sCompleted ? 'line-through text-slate-400' : 'text-slate-200'}`}>{sText}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Quick Inline Add Subtask Input on Task Card */}
+                    <div className="flex items-center gap-1.5 pt-1.5">
+                      <input 
+                        type="text"
+                        placeholder="+ Add subtask checklist item..."
+                        value={quickSubtaskInputs[task.id] || ''}
+                        onChange={(e) => setQuickSubtaskInputs({ ...quickSubtaskInputs, [task.id]: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleQuickAddSubtask(task.id);
+                          }
+                        }}
+                        className="flex-1 px-3 py-1.5 text-xs rounded-xl bg-white/[0.08] border border-white/15 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleQuickAddSubtask(task.id)}
+                        className="px-3 py-1.5 text-[11px] font-bold rounded-xl bg-emerald-500/25 hover:bg-emerald-500/40 text-emerald-300 hover:text-white border border-emerald-500/40 transition active:scale-95 shrink-0"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="mt-5 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
@@ -2396,35 +2483,41 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
 
                 {/* Subtasks checklist items */}
                 {formData.subtasks && formData.subtasks.length > 0 ? (
-                  <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1 mt-2 hide-scrollbar">
-                    {formData.subtasks.map((sub: any, idx: number) => (
-                      <div 
-                        key={sub.id || idx}
-                        className="flex items-center justify-between gap-2 p-2 sm:p-2.5 rounded-xl bg-white/[0.06] border border-white/10 group hover:bg-white/10 transition"
-                      >
+                  <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 mt-2">
+                    {formData.subtasks.map((sub: any, idx: number) => {
+                      const subId = typeof sub === 'object' && (sub.id || sub._id) ? (sub.id || sub._id) : `st-${idx}`;
+                      const subText = typeof sub === 'string' ? sub : (sub.text || sub.title || 'Milestone checklist item');
+                      const isCompleted = typeof sub === 'object' ? !!sub.completed : false;
+
+                      return (
                         <div 
-                          className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer"
-                          onClick={() => handleToggleSubtaskInForm(sub.id)}
+                          key={subId}
+                          className="flex items-center justify-between gap-2 p-2 sm:p-2.5 rounded-xl bg-white/[0.06] border border-white/10 group hover:bg-white/10 transition"
                         >
-                          <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition ${
-                            sub.completed ? 'bg-emerald-500 border-emerald-500' : 'border-white/30 group-hover:border-emerald-400'
-                          }`}>
-                            {sub.completed && <Check className="w-3 h-3 text-white stroke-[3]" />}
+                          <div 
+                            className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer"
+                            onClick={() => handleToggleSubtaskInForm(subId)}
+                          >
+                            <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition ${
+                              isCompleted ? 'bg-emerald-500 border-emerald-500' : 'border-white/30 group-hover:border-emerald-400'
+                            }`}>
+                              {isCompleted && <Check className="w-3 h-3 text-white stroke-[3]" />}
+                            </div>
+                            <span className={`text-xs truncate ${isCompleted ? 'line-through text-slate-400' : 'text-slate-200'}`}>
+                              {subText}
+                            </span>
                           </div>
-                          <span className={`text-xs truncate ${sub.completed ? 'line-through text-slate-400' : 'text-slate-200'}`}>
-                            {sub.text}
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSubtaskFromForm(subId)}
+                            className="text-slate-400 hover:text-rose-400 p-1 rounded-lg hover:bg-white/10 transition shrink-0"
+                            title="Remove subtask"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveSubtaskFromForm(sub.id)}
-                          className="text-slate-400 hover:text-rose-400 p-1 rounded-lg hover:bg-white/10 transition shrink-0"
-                          title="Remove subtask"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-[11px] text-slate-400 italic pt-1">
@@ -4449,6 +4542,9 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
   const [frequency, setFrequency] = useState(user.reportFrequency || 'daily');
   const [enableAlerts, setEnableAlerts] = useState(user.emailDigest ?? true);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [gatewayStatus, setGatewayStatus] = useState<any>({ hasResend: false, hasBrevo: false });
+  const [resendKeyInput, setResendKeyInput] = useState('');
+  const [savingGateway, setSavingGateway] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -4459,6 +4555,16 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
         if (settings.emailDigest !== undefined) setEnableAlerts(settings.emailDigest);
       }
     }).catch(() => {});
+
+    api.getEmailGateway().then(gw => {
+      if (isMounted && gw) {
+        setGatewayStatus(gw);
+        if (gw.resendApiKeyMasked && gw.resendApiKeyMasked !== 'configured') {
+          setResendKeyInput(gw.resendApiKeyMasked);
+        }
+      }
+    }).catch(() => {});
+
     return () => { isMounted = false; };
   }, []);
 
@@ -4484,6 +4590,20 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
     }
   };
 
+  const handleSaveGateway = async () => {
+    if (!resendKeyInput.trim()) return;
+    setSavingGateway(true);
+    try {
+      await api.saveEmailGateway({ resendApiKey: resendKeyInput.trim() });
+      setGatewayStatus((prev: any) => ({ ...prev, hasResend: true }));
+      showToast("Email API Key saved directly to MongoDB! Instant HTTPS email active 🚀");
+    } catch {
+      showToast("Could not save email gateway.");
+    } finally {
+      setSavingGateway(false);
+    }
+  };
+
   const sendTestEmail = async () => {
     showToast("Dispatching automated digest briefing...");
     try {
@@ -4491,7 +4611,7 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
       if (res && res.delivered) {
         showToast(`Digest briefing successfully delivered to ${res.recipient}! 📬`);
       } else {
-        showToast(`Briefing dispatched! (Note: Render Free tier drops outbound SMTP ports 587/465; add RESEND_API_KEY in Render dashboard for HTTPS delivery)`);
+        showToast(`Briefing dispatched! (Note: Render Free tier blocks raw SMTP ports 587/465 with [Errno 101]; save your Resend API Key below for instant HTTPS delivery)`);
       }
     } catch {
       showToast(`Test digest dispatched to: ${user.email} 📬`);
@@ -4503,6 +4623,66 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
       <div>
         <h2 className="text-2xl font-black text-white drop-shadow">Automated Intelligence Reports</h2>
         <p className="text-xs text-slate-300 mt-1">Configure automated morning briefs, deadline reminders, and weekly recaps</p>
+      </div>
+
+      {/* Cloud HTTPS Email Gateway Setup (Bypasses Render SMTP [Errno 101] Block) */}
+      <div 
+        style={{
+          background: 'rgba(14, 28, 20, 0.75)',
+          backdropFilter: 'blur(24px) saturate(160%)',
+          border: '1px solid rgba(52, 211, 153, 0.25)',
+          boxShadow: '0 20px 45px rgba(0,0,0,0.35)'
+        }}
+        className="p-6 sm:p-8 rounded-3xl space-y-4"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/10">
+          <div>
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <Mail className="w-4 h-4 text-emerald-400" />
+              Direct HTTPS Email Delivery (Port 443)
+            </h3>
+            <p className="text-xs text-slate-300 mt-0.5">Bypasses Render Free Tier raw SMTP firewall drop</p>
+          </div>
+          <div>
+            {gatewayStatus.hasResend || gatewayStatus.hasBrevo ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/35">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> HTTPS API Active
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/35">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Key Required for Cloud Email
+              </span>
+            )}
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-300 leading-relaxed">
+          Render Free Tier strictly blocks outgoing SMTP ports (587 & 465) with <code>[Errno 101] Network is unreachable</code>. 
+          Get a free API key at <strong className="text-emerald-300">resend.com</strong> (3,000 free emails/month, no credit card required) and paste it below. It saves directly to MongoDB and activates instantly across all users!
+        </p>
+
+        <div className="space-y-2 pt-1">
+          <label className="block text-xs font-semibold text-slate-200">Resend API Key</label>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <input 
+              type="password"
+              placeholder="re_1234567890abcdef..."
+              value={resendKeyInput}
+              onChange={(e) => setResendKeyInput(e.target.value)}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
+            />
+            <button
+              onClick={handleSaveGateway}
+              disabled={savingGateway || !resendKeyInput.trim()}
+              className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-xs font-bold transition shadow-lg shadow-emerald-500/25 active:scale-95 shrink-0"
+            >
+              {savingGateway ? "Saving..." : "Save Key to DB"}
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-400">
+            Stored in your Atlas database <code>chronos_db</code>. No server restarts or Render configuration needed.
+          </p>
+        </div>
       </div>
 
       <div 

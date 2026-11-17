@@ -12,6 +12,20 @@ router = APIRouter(prefix="/tasks", tags=["Tasks Manager"])
 def serialize_task(doc: dict) -> dict:
     item = dict(doc)
     item["id"] = item.get("_id") or item.get("id")
+    raw_subtasks = item.get("subtasks")
+    if not isinstance(raw_subtasks, list):
+        raw_subtasks = []
+    normalized_subtasks = []
+    for s in raw_subtasks:
+        if isinstance(s, dict):
+            s_dict = dict(s)
+            s_id = s_dict.get("id") or s_dict.get("_id") or f"st-{uuid.uuid4().hex[:8]}"
+            s_text = s_dict.get("text") or s_dict.get("title") or s_dict.get("name") or ""
+            s_completed = bool(s_dict.get("completed", False))
+            normalized_subtasks.append({"id": str(s_id), "text": str(s_text), "completed": s_completed})
+        elif isinstance(s, str):
+            normalized_subtasks.append({"id": f"st-{uuid.uuid4().hex[:8]}", "text": s, "completed": False})
+    item["subtasks"] = normalized_subtasks
     return item
 
 @router.get("", response_model=List[TaskResponse])
@@ -35,8 +49,8 @@ async def list_tasks(
         
     tasks = await get_col("tasks").find(query).to_list(1000)
     
-    if search:
-        s_lower = search.lower()
+    if search and isinstance(search, str) and search.strip():
+        s_lower = search.strip().lower()
         tasks = [t for t in tasks if s_lower in t.get("title", "").lower() or s_lower in t.get("description", "").lower()]
         
     return [TaskResponse(**serialize_task(t)) for t in tasks]

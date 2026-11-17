@@ -37,3 +37,28 @@ async def trigger_digest_dispatch(current_user: dict = Depends(get_current_user)
     
     result = await dispatch_digest_email(current_user, tasks, routines)
     return DigestDispatchResponse(**result)
+
+@router.get("/gateway")
+async def get_email_gateway(current_user: dict = Depends(get_current_user)):
+    from app.config import settings
+    gw_doc = await get_col("system_settings").find_one({"_id": "email_gateway"}) or {}
+    has_resend = bool(settings.RESEND_API_KEY.strip() or gw_doc.get("resendApiKey"))
+    has_brevo = bool(settings.BREVO_API_KEY.strip() or gw_doc.get("brevoApiKey"))
+    return {
+        "hasResend": has_resend,
+        "hasBrevo": has_brevo,
+        "resendApiKeyMasked": f"re_...{gw_doc.get('resendApiKey', '')[-4:]}" if gw_doc.get("resendApiKey") else ("configured" if settings.RESEND_API_KEY else ""),
+        "brevoApiKeyMasked": f"...{gw_doc.get('brevoApiKey', '')[-4:]}" if gw_doc.get("brevoApiKey") else ("configured" if settings.BREVO_API_KEY else ""),
+    }
+
+@router.post("/gateway")
+async def save_email_gateway(payload: dict, current_user: dict = Depends(get_current_user)):
+    resend_key = payload.get("resendApiKey", "").strip()
+    brevo_key = payload.get("brevoApiKey", "").strip()
+    
+    await get_col("system_settings").update_one(
+        {"_id": "email_gateway"},
+        {"$set": {"resendApiKey": resend_key, "brevoApiKey": brevo_key, "updatedBy": current_user["_id"]}},
+        upsert=True
+    )
+    return {"status": "success", "message": "Email HTTPS API gateway credentials saved to database"}
