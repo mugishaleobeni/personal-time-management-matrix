@@ -160,6 +160,13 @@ class ApiService {
     return this.request<User>('/auth/me');
   }
 
+  async uploadAvatar(avatarData: string): Promise<{ status: string; avatar: string }> {
+    return this.request<{ status: string; avatar: string }>('/auth/upload-avatar', {
+      method: 'POST',
+      body: JSON.stringify({ avatar: avatarData }),
+    });
+  }
+
   async updateProfile(updates: Partial<User>): Promise<User> {
     return this.request<User>('/auth/profile', {
       method: 'PUT',

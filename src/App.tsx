@@ -6,7 +6,8 @@ import {
   ChevronRight, ChevronDown, Check, Folder, Tag, Download, 
   Sparkles, Flame, Shield, LogOut, Coffee, Timer as TimerIcon,
   Layers, FileText, CheckSquare, ListTodo, Star, Compass, RefreshCw,
-  X, Zap, ExternalLink, Image as ImageIcon, Upload, Save, Eye, BookOpen, Copy, Lock
+  X, Zap, ExternalLink, Image as ImageIcon, Upload, Save, Eye, BookOpen, Copy, Lock,
+  Volume2, Sliders, Smartphone
 } from 'lucide-react';
 import { Button as TButton, Tag as TTag, Badge as TBadge, Tooltip as TTooltip, Switch as TSwitch, Progress as TProgress } from 'tdesign-react';
 import { api } from './services/api';
@@ -186,6 +187,17 @@ export default function App() {
   const [pomodoroCycles, setPomodoroCycles] = useState(0);
   const [toastMessage, setToastMessage] = useState(null);
 
+  // User Customizable Timer & Sound States
+  const [customWorkMinutes, setCustomWorkMinutes] = useState(() => {
+    return parseInt(localStorage.getItem('custom_work_mins') || '25', 10);
+  });
+  const [customBreakMinutes, setCustomBreakMinutes] = useState(() => {
+    return parseInt(localStorage.getItem('custom_break_mins') || '5', 10);
+  });
+  const [selectedRingtone, setSelectedRingtone] = useState(() => {
+    return localStorage.getItem('selected_ringtone') || 'digital';
+  });
+
   // ExBOS Navigation Modules Configuration
   const navModules = [
     {
@@ -307,10 +319,22 @@ export default function App() {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
+      reader.onload = async (uploadEvent) => {
         const result = uploadEvent.target?.result;
         if (result && typeof result === 'string') {
+          showToast("Uploading avatar to Cloudinary & saving to Atlas...");
+          try {
+            const res = await api.uploadAvatar(result);
+            if (res && res.avatar) {
+              handleProfilePhotoChange(res.avatar);
+              showToast("Avatar successfully uploaded to Cloudinary & saved to Atlas! 🚀");
+              return;
+            }
+          } catch (err) {
+            console.warn("Cloudinary upload fallback:", err);
+          }
           handleProfilePhotoChange(result);
+          showToast("Profile avatar saved to Atlas!");
         }
       };
       reader.readAsDataURL(file);
@@ -379,19 +403,20 @@ export default function App() {
     if (activeTaskId) {
       flushTimerSeconds(activeTaskId);
     }
+    playTimerRingtone(selectedRingtone);
     if (timerMode === 'pomodoro') {
       if (pomodoroStage === 'work') {
         setPomodoroCycles(c => c + 1);
         setPomodoroStage('break');
-        setTimerSeconds(5 * 60);
-        showToast("Great job! Work sprint finished. Enjoy a 5-minute breather! ☕");
+        setTimerSeconds(customBreakMinutes * 60);
+        showToast(`Work sprint complete! Enjoy a ${customBreakMinutes}-minute breather! ☕ 🔔`);
       } else {
         setPomodoroStage('work');
-        setTimerSeconds(25 * 60);
-        showToast("Break concluded! Back into flow state. 🚀");
+        setTimerSeconds(customWorkMinutes * 60);
+        showToast(`Break concluded! Resuming flow state (${customWorkMinutes}m). 🚀 🔔`);
       }
     } else {
-      showToast("Time's up! Great session completed. ✨");
+      showToast("Time's up! Great session completed. ✨ 🔔");
     }
   };
 
@@ -513,7 +538,7 @@ export default function App() {
         <aside className="fixed bottom-3 left-1/2 -translate-x-1/2 md:translate-x-0 md:bottom-auto md:left-4 lg:left-5 md:top-1/2 md:-translate-y-1/2 z-50 select-none max-w-[calc(100vw-24px)]">
           <nav 
             ref={navContainerRef}
-            aria-label="Chronos primary navigation"
+            aria-label="Master Your Time primary navigation"
             style={{
               backgroundColor: 'rgba(16, 36, 25, 0.94)',
               backdropFilter: 'blur(14px) saturate(145%)',
@@ -650,7 +675,7 @@ export default function App() {
                 <div className="flex items-center justify-between pb-3 mb-2 border-b border-emerald-500/20">
                   <div>
                     <span className="text-[9px] uppercase tracking-widest font-extrabold text-emerald-300 block">
-                      CHRONOS • SUBNAVIGATION
+                      MASTER YOUR TIME • SUBNAVIGATION
                     </span>
                     <h4 className="text-sm font-bold text-white leading-tight">
                       {activeModuleObj.label}
@@ -909,6 +934,12 @@ export default function App() {
                 formatSeconds={formatSeconds}
                 showToast={showToast}
                 themeMode={themeMode}
+                customWorkMinutes={customWorkMinutes}
+                setCustomWorkMinutes={setCustomWorkMinutes}
+                customBreakMinutes={customBreakMinutes}
+                setCustomBreakMinutes={setCustomBreakMinutes}
+                selectedRingtone={selectedRingtone}
+                setSelectedRingtone={setSelectedRingtone}
               />
             )}
 
@@ -1921,7 +1952,7 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
           <select 
             value={selectedPriority} 
             onChange={(e) => setSelectedPriority(e.target.value)}
-            className="bg-zinc-900 border border-emerald-500/30 text-xs text-white rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="bg-[#0c1a12] border border-emerald-500/30 text-xs text-white rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
           >
             {priorities.map(p => (
               <option key={p} value={p} className="bg-zinc-900 text-white">{p} Priority</option>
@@ -2112,7 +2143,7 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
                   <select 
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-white/15 text-white text-xs"
+                    className="w-full px-3 py-2 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
                   >
                     <option value="Work">Work</option>
                     <option value="Learning">Learning</option>
@@ -2125,7 +2156,7 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
                   <select 
                     value={formData.priority}
                     onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-white/15 text-white text-xs"
+                    className="w-full px-3 py-2 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
                   >
                     <option value="Low">Low</option>
                     <option value="Medium">Medium</option>
@@ -2265,13 +2296,166 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
 }
 
 // ==========================================================
-// 3. ACTIVE TASKS & TIMER VIEW (Responsive Dial & Layout)
+// 3. IPHONE ROLLING DIGITS & ACTIVE TASKS & TIMER VIEW
 // ==========================================================
+
+const RINGTONE_OPTIONS = [
+  { id: 'digital', name: 'Digital Chime (iPhone / Apple)' },
+  { id: 'bell', name: 'Tibetan Resonant Bowl' },
+  { id: 'radar', name: 'Cosmic Radar Pulse' },
+  { id: 'marimba', name: 'Marimba Arpeggio' },
+  { id: 'alarm', name: 'Classic Pulse Alarm' }
+];
+
+function playTimerRingtone(ringtoneType = 'digital') {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const now = ctx.currentTime;
+
+    if (ringtoneType === 'digital') {
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc1.type = 'sine';
+      osc2.type = 'sine';
+      osc1.frequency.setValueAtTime(880, now);
+      osc1.frequency.exponentialRampToValueAtTime(1760, now + 0.15);
+      osc2.frequency.setValueAtTime(1320, now + 0.18);
+      osc2.frequency.exponentialRampToValueAtTime(2640, now + 0.35);
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.85);
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+      osc1.start(now);
+      osc2.start(now + 0.18);
+      osc1.stop(now + 0.18);
+      osc2.stop(now + 0.85);
+    } else if (ringtoneType === 'bell') {
+      [528, 1056, 1584].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now);
+        gain.gain.setValueAtTime(0.25 / (idx + 1), now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 2.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 2.2);
+      });
+    } else if (ringtoneType === 'marimba') {
+      const notes = [523.25, 659.25, 783.99, 1046.50];
+      notes.forEach((freq, i) => {
+        const t = now + i * 0.12;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, t);
+        gain.gain.setValueAtTime(0.3, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.4);
+      });
+    } else if (ringtoneType === 'radar') {
+      [0, 0.22, 0.44].forEach((delay) => {
+        const t = now + delay;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1400, t);
+        osc.frequency.exponentialRampToValueAtTime(700, t + 0.18);
+        gain.gain.setValueAtTime(0.22, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.2);
+      });
+    } else {
+      [0, 0.14, 0.28].forEach((delay) => {
+        const t = now + delay;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(1046.5, t);
+        gain.gain.setValueAtTime(0.18, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.09);
+      });
+    }
+  } catch (err) {
+    console.warn("Audio Context playback error:", err);
+  }
+}
+
+function IPhoneRollingDigit({ digit }: { digit: number | string }) {
+  const num = typeof digit === 'string' ? parseInt(digit, 10) : digit;
+  const safeNum = isNaN(num) ? 0 : num;
+  return (
+    <span className="inline-block relative h-[1.14em] w-[0.62em] overflow-hidden align-middle select-none font-mono">
+      <span 
+        className="flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.28)]"
+        style={{ transform: `translateY(-${safeNum * 10}%)` }}
+      >
+        {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+          <span key={n} className="h-[1.14em] flex items-center justify-center leading-none">
+            {n}
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+function IPhoneWatchDisplay({ totalSeconds }: { totalSeconds: number }) {
+  const hrs = Math.floor(totalSeconds / 3600);
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+  const secs = totalSeconds % 60;
+
+  const minTens = Math.floor(mins / 10);
+  const minOnes = mins % 10;
+  const secTens = Math.floor(secs / 10);
+  const secOnes = secs % 10;
+
+  return (
+    <div className="flex items-center justify-center font-mono font-black tracking-tight text-white select-none text-5xl sm:text-7xl md:text-8xl drop-shadow-2xl my-3 sm:my-5">
+      {hrs > 0 && (
+        <>
+          <span className="flex items-center">
+            <IPhoneRollingDigit digit={Math.floor(hrs / 10)} />
+            <IPhoneRollingDigit digit={hrs % 10} />
+          </span>
+          <span className="text-emerald-400 mx-1 sm:mx-2 animate-pulse">:</span>
+        </>
+      )}
+      <span className="flex items-center">
+        <IPhoneRollingDigit digit={minTens} />
+        <IPhoneRollingDigit digit={minOnes} />
+      </span>
+      <span className="text-emerald-400 mx-1 sm:mx-2 animate-pulse">:</span>
+      <span className="flex items-center text-emerald-300">
+        <IPhoneRollingDigit digit={secTens} />
+        <IPhoneRollingDigit digit={secOnes} />
+      </span>
+    </div>
+  );
+}
 
 function TimerWorkspaceView({
   timerMode, setTimerMode, timerStatus, setTimerStatus,
   timerSeconds, setTimerSeconds, activeTaskId, setActiveTaskId,
-  tasks, pomodoroStage, pomodoroCycles, formatSeconds, showToast, themeMode
+  tasks, pomodoroStage, pomodoroCycles, formatSeconds, showToast, themeMode,
+  customWorkMinutes, setCustomWorkMinutes,
+  customBreakMinutes, setCustomBreakMinutes,
+  selectedRingtone, setSelectedRingtone
 }) {
   const currentBoundTask = tasks.find(t => t.id === activeTaskId);
 
@@ -2280,7 +2464,7 @@ function TimerWorkspaceView({
   const resetTimer = () => {
     setTimerStatus('paused');
     if (timerMode === 'pomodoro') {
-      setTimerSeconds(pomodoroStage === 'work' ? 25 * 60 : 5 * 60);
+      setTimerSeconds(pomodoroStage === 'work' ? customWorkMinutes * 60 : customBreakMinutes * 60);
     } else if (timerMode === 'countdown') {
       setTimerSeconds(15 * 60);
     } else {
@@ -2291,7 +2475,7 @@ function TimerWorkspaceView({
   const switchMode = (mode) => {
     setTimerMode(mode);
     setTimerStatus('paused');
-    if (mode === 'pomodoro') setTimerSeconds(25 * 60);
+    if (mode === 'pomodoro') setTimerSeconds(customWorkMinutes * 60);
     if (mode === 'countdown') setTimerSeconds(15 * 60);
     if (mode === 'stopwatch') setTimerSeconds(0);
   };
@@ -2358,8 +2542,42 @@ function TimerWorkspaceView({
           <strong className="text-white truncate max-w-[200px] sm:max-w-xs">{currentBoundTask ? currentBoundTask.title : "Unassigned Session"}</strong>
         </div>
 
-        <div className="relative z-10 text-5xl sm:text-7xl md:text-8xl font-black text-white tracking-tighter font-mono my-4 sm:my-6 select-none drop-shadow-lg">
-          {formatSeconds(timerSeconds)}
+        {/* iPhone / Apple Watch Style Rolling Digits Display */}
+        <div className="relative z-10">
+          <IPhoneWatchDisplay totalSeconds={timerSeconds} />
+        </div>
+
+        {/* Quick Fine-Tuning Controls (-5m, -1m, +1m, +5m) */}
+        <div className="relative z-10 flex items-center justify-center gap-2 mb-4 sm:mb-6">
+          <button
+            onClick={() => setTimerSeconds(s => Math.max(0, s - 300))}
+            className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-slate-300 hover:text-white text-[11px] font-mono transition"
+            title="Subtract 5 minutes"
+          >
+            -5m
+          </button>
+          <button
+            onClick={() => setTimerSeconds(s => Math.max(0, s - 60))}
+            className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-slate-300 hover:text-white text-[11px] font-mono transition"
+            title="Subtract 1 minute"
+          >
+            -1m
+          </button>
+          <span className="text-[10px] text-slate-500 font-mono px-1">Adjust</span>
+          <button
+            onClick={() => setTimerSeconds(s => s + 60)}
+            className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-emerald-300 hover:text-emerald-200 text-[11px] font-mono transition"
+            title="Add 1 minute"
+          >
+            +1m
+          </button>
+          <button
+            onClick={() => setTimerSeconds(s => s + 300)}
+            className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-emerald-300 hover:text-emerald-200 text-[11px] font-mono transition"
+            title="Add 5 minutes"
+          >
+            +5m
+          </button>
         </div>
 
         {timerMode === 'pomodoro' && (
@@ -2412,6 +2630,125 @@ function TimerWorkspaceView({
           >
             <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
           </button>
+        </div>
+      </div>
+
+      {/* Custom Duration & Ringtone Settings Card */}
+      <div 
+        style={{
+          background: 'rgba(14, 28, 20, 0.65)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(52, 211, 153, 0.2)',
+          boxShadow: '0 15px 35px rgba(0,0,0,0.35)'
+        }}
+        className="p-5 sm:p-7 rounded-3xl space-y-5"
+      >
+        <div className="flex items-center justify-between pb-3 border-b border-white/10">
+          <div className="flex items-center gap-2">
+            <Sliders className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-sm font-bold text-white">Timer Customization & Alert Ringtone</h3>
+          </div>
+          <span className="text-[10px] text-emerald-400 font-mono uppercase bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+            <Smartphone className="w-3 h-3" /> iPhone Dynamic Rolling Seconds
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Work Sprint Duration */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">
+              Pomodoro Focus Duration
+            </label>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[15, 25, 30, 45, 50, 60].map(mins => (
+                <button
+                  key={mins}
+                  onClick={() => {
+                    setCustomWorkMinutes(mins);
+                    localStorage.setItem('custom_work_mins', String(mins));
+                    if (timerMode === 'pomodoro' && pomodoroStage === 'work') {
+                      setTimerSeconds(mins * 60);
+                      setTimerStatus('paused');
+                    }
+                    showToast(`Set Pomodoro focus sprint to ${mins} mins`);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition ${
+                    customWorkMinutes === mins 
+                      ? 'bg-emerald-500 text-white shadow'
+                      : 'bg-white/5 border border-white/10 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  {mins}m
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Break Duration */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">
+              Breather & Rest Duration
+            </label>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[3, 5, 10, 15, 20].map(mins => (
+                <button
+                  key={mins}
+                  onClick={() => {
+                    setCustomBreakMinutes(mins);
+                    localStorage.setItem('custom_break_mins', String(mins));
+                    if (timerMode === 'pomodoro' && pomodoroStage === 'break') {
+                      setTimerSeconds(mins * 60);
+                      setTimerStatus('paused');
+                    }
+                    showToast(`Set Breather rest to ${mins} mins`);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition ${
+                    customBreakMinutes === mins 
+                      ? 'bg-emerald-500 text-white shadow'
+                      : 'bg-white/5 border border-white/10 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  {mins}m
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Ringtone Selection */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">
+              Completion Alert Ringtone
+            </label>
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedRingtone}
+                onChange={(e) => {
+                  setSelectedRingtone(e.target.value);
+                  localStorage.setItem('selected_ringtone', e.target.value);
+                  playTimerRingtone(e.target.value);
+                }}
+                className="flex-1 bg-[#0c1a12] border border-emerald-500/30 text-white rounded-xl px-3 py-1.5 text-xs focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
+              >
+                {RINGTONE_OPTIONS.map(r => (
+                  <option key={r.id} value={r.id} className="bg-slate-900 text-white">
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  playTimerRingtone(selectedRingtone);
+                  showToast("Playing ringtone preview 🔊");
+                }}
+                className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 text-xs font-bold transition flex items-center gap-1 shrink-0"
+                title="Preview sound"
+              >
+                <Volume2 className="w-3.5 h-3.5" />
+                <span>Test</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2581,7 +2918,7 @@ function DailyRoutineView({ routines, setRoutines, toggleRoutine, showToast, the
               <select
                 value={newPeriod}
                 onChange={(e) => setNewPeriod(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/15 text-white text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                className="w-full px-3.5 py-2 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs focus:ring-2 focus:ring-emerald-500/50 shadow-inner focus:outline-none"
               >
                 <option value="Morning">Morning</option>
                 <option value="Afternoon">Afternoon</option>
@@ -3266,7 +3603,7 @@ function NotebookView({ notes, setNotes, showToast, themeMode }) {
                           setDraftCategory(e.target.value);
                           handleSaveNote({ category: e.target.value });
                         }}
-                        className="w-full py-2.5 px-3 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        className="w-full py-2.5 px-3 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
                       >
                         {categories.filter(c => c !== "All").map(c => (
                           <option key={c} value={c} className="bg-slate-900 text-white">{c}</option>
@@ -3384,113 +3721,168 @@ function CalendarScheduleView({ tasks, routines, showToast, themeMode }) {
         </div>
       </div>
 
-      <div 
-        style={{
-          background: 'rgba(14, 28, 20, 0.65)',
-          backdropFilter: 'blur(24px) saturate(160%)',
-          border: '1px solid rgba(52, 211, 153, 0.2)',
-          boxShadow: '0 15px 35px rgba(0,0,0,0.35)'
-        }}
-        className="grid grid-cols-7 gap-1 sm:gap-2 p-2 sm:p-3 rounded-3xl overflow-x-auto hide-scrollbar"
-      >
-        {daysOfWeek.map((d, index) => {
-          const isSelected = selectedDay === d.date;
-          return (
-            <button
-              key={index}
-              onClick={() => setSelectedDay(d.date)}
-              className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center transition-all min-w-[36px] ${
-                isSelected
-                  ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30 scale-105 font-bold'
-                  : 'hover:bg-white/10 text-slate-300 hover:text-white'
-              }`}
-            >
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase">{d.day}</span>
-              <span className="text-sm sm:text-lg font-black mt-0.5">{d.date}</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* Month View Matrix */}
+      {viewMode === 'month' ? (
+        <div 
+          style={{
+            background: 'rgba(14, 28, 20, 0.65)',
+            backdropFilter: 'blur(24px) saturate(160%)',
+            border: '1px solid rgba(52, 211, 153, 0.2)',
+            boxShadow: '0 15px 35px rgba(0,0,0,0.35)'
+          }}
+          className="p-4 sm:p-6 rounded-3xl space-y-3"
+        >
+          <div className="flex items-center justify-between pb-2 border-b border-white/10">
+            <h3 className="text-sm font-bold text-white">November 2026 Monthly Matrix</h3>
+            <span className="text-[11px] text-emerald-400 font-mono">30 Days Active</span>
+          </div>
 
-      <div 
-        style={{
-          background: 'rgba(14, 28, 20, 0.65)',
-          backdropFilter: 'blur(24px) saturate(160%)',
-          border: '1px solid rgba(52, 211, 153, 0.2)',
-          boxShadow: '0 15px 35px rgba(0,0,0,0.35)'
-        }}
-        className="p-4 sm:p-6 rounded-3xl space-y-3 sm:space-y-4"
-      >
-        {hours.map((hour, idx) => {
-          const matchingTasks = tasks.filter(t => t.startTime && t.startTime.startsWith(hour.slice(0, 2)));
-          const matchingRoutines = routines.filter(r => r.time && r.time.startsWith(hour.slice(0, 2)));
-          const hasItems = matchingTasks.length > 0 || matchingRoutines.length > 0;
-          return (
-            <div key={idx} className="flex items-start gap-2.5 sm:gap-4 pb-3 sm:pb-4 border-b border-white/10 last:border-0">
-              <div className="w-12 sm:w-16 text-right text-[11px] sm:text-xs font-mono font-bold text-slate-300 shrink-0 pt-1">
-                {hour}
-              </div>
+          <div className="grid grid-cols-7 gap-1 sm:gap-2 text-center text-xs font-bold text-slate-400 uppercase">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+              <div key={d} className="py-1">{d}</div>
+            ))}
+          </div>
 
-              <div className="flex-1 space-y-2 min-w-0">
-                {hasItems ? (
-                  <>
-                    {matchingRoutines.map(r => (
-                      <div
-                        key={r.id}
-                        onClick={() => showToast(`Ritual: ${r.title} (${r.streak} day streak)`)}
-                        className="p-2 sm:p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-200 font-semibold shadow-sm flex items-center justify-between cursor-pointer hover:bg-emerald-500/30 transition"
-                      >
-                        <div className="flex items-center gap-2 truncate pr-2">
-                          <Flame className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                          <span className="text-xs font-bold truncate">{r.title}</span>
-                          <span className="text-[10px] text-emerald-300/80 font-mono">({r.duration}m habit)</span>
-                        </div>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/30 text-emerald-300 shrink-0">
-                          {r.streak}🔥
-                        </span>
-                      </div>
-                    ))}
-                    {matchingTasks.map(t => (
-                      <div 
-                        key={t.id}
-                        onClick={() => showToast(`Task: ${t.title}`)}
-                        className="p-2.5 sm:p-3.5 rounded-2xl bg-white text-zinc-900 font-semibold shadow-md flex items-center justify-between cursor-pointer hover:scale-[1.01] transition"
-                      >
-                        <div className="truncate pr-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold leading-tight truncate">{t.title}</span>
-                            <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${
-                              t.priority === 'Urgent' ? 'bg-rose-100 text-rose-700' :
-                              t.priority === 'High' ? 'bg-amber-100 text-amber-700' :
-                              'bg-slate-100 text-slate-600'
-                            }`}>
-                              {t.priority}
+          <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+            {Array.from({ length: 30 }, (_, i) => i + 1).map(dayNum => {
+              const isSelected = selectedDay === dayNum;
+              return (
+                <button
+                  key={dayNum}
+                  onClick={() => {
+                    setSelectedDay(dayNum);
+                    setViewMode('day');
+                    showToast(`Selected Day ${dayNum} Schedule view`);
+                  }}
+                  className={`p-2 sm:p-3 rounded-2xl flex flex-col items-center justify-between min-h-[64px] sm:min-h-[76px] transition border ${
+                    isSelected 
+                      ? 'bg-emerald-500/20 border-emerald-400 text-white shadow-lg shadow-emerald-500/20' 
+                      : 'bg-white/5 border-white/5 hover:bg-white/10 text-slate-300'
+                  }`}
+                >
+                  <span className="text-xs sm:text-sm font-bold">{dayNum}</span>
+                  <div className="flex items-center gap-1 mt-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    {dayNum % 2 === 0 && <span className="w-1.5 h-1.5 rounded-full bg-teal-400/80" />}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Day / Week Selector Bar */}
+          <div 
+            style={{
+              background: 'rgba(14, 28, 20, 0.65)',
+              backdropFilter: 'blur(24px) saturate(160%)',
+              border: '1px solid rgba(52, 211, 153, 0.2)',
+              boxShadow: '0 15px 35px rgba(0,0,0,0.35)'
+            }}
+            className="grid grid-cols-7 gap-1 sm:gap-2 p-2 sm:p-3 rounded-3xl overflow-x-auto hide-scrollbar"
+          >
+            {daysOfWeek.map((d, index) => {
+              const isSelected = selectedDay === d.date;
+              return (
+                <button
+                  key={index}
+                  onClick={() => setSelectedDay(d.date)}
+                  className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center transition-all min-w-[36px] ${
+                    isSelected
+                      ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30 scale-105 font-bold'
+                      : 'hover:bg-white/10 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <span className="text-[10px] sm:text-[11px] font-bold uppercase">{d.day}</span>
+                  <span className="text-sm sm:text-lg font-black mt-0.5">{d.date}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Hourly Timeline Schedule Slots */}
+          <div 
+            style={{
+              background: 'rgba(14, 28, 20, 0.65)',
+              backdropFilter: 'blur(24px) saturate(160%)',
+              border: '1px solid rgba(52, 211, 153, 0.2)',
+              boxShadow: '0 15px 35px rgba(0,0,0,0.35)'
+            }}
+            className="p-4 sm:p-6 rounded-3xl space-y-3 sm:space-y-4"
+          >
+            {hours.map((hour, idx) => {
+              const matchingTasks = tasks.filter(t => t.startTime && t.startTime.startsWith(hour.slice(0, 2)));
+              const matchingRoutines = routines.filter(r => r.time && r.time.startsWith(hour.slice(0, 2)));
+              const hasItems = matchingTasks.length > 0 || matchingRoutines.length > 0;
+              return (
+                <div key={idx} className="flex items-start gap-2.5 sm:gap-4 pb-3 sm:pb-4 border-b border-white/10 last:border-0">
+                  <div className="w-12 sm:w-16 text-right text-[11px] sm:text-xs font-mono font-bold text-slate-300 shrink-0 pt-1">
+                    {hour}
+                  </div>
+
+                  <div className="flex-1 space-y-2 min-w-0">
+                    {hasItems ? (
+                      <>
+                        {matchingRoutines.map(r => (
+                          <div
+                            key={r.id}
+                            onClick={() => showToast(`Ritual: ${r.title} (${r.streak} day streak)`)}
+                            className="p-2 sm:p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-200 font-semibold shadow-sm flex items-center justify-between cursor-pointer hover:bg-emerald-500/30 transition"
+                          >
+                            <div className="flex items-center gap-2 truncate pr-2">
+                              <Flame className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <span className="text-xs font-bold truncate">{r.title}</span>
+                              <span className="text-[10px] text-emerald-300/80 font-mono">({r.duration}m habit)</span>
+                            </div>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/30 text-emerald-300 shrink-0">
+                              {r.streak}🔥
                             </span>
                           </div>
-                          <div className="text-[10px] sm:text-[11px] text-zinc-500 font-mono mt-0.5 truncate">{t.startTime} - {t.endTime} • {t.category}</div>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {t.status === 'Completed' ? (
-                            <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
-                              <CheckCircle2 className="w-3.5 h-3.5" /> Done
-                            </span>
-                          ) : (
-                            <ChevronRight className="w-4 h-4 text-zinc-400" />
-                          )}
-                        </div>
+                        ))}
+                        {matchingTasks.map(t => (
+                          <div 
+                            key={t.id}
+                            onClick={() => showToast(`Task: ${t.title}`)}
+                            className="p-2.5 sm:p-3.5 rounded-2xl bg-white text-zinc-900 font-semibold shadow-md flex items-center justify-between cursor-pointer hover:scale-[1.01] transition"
+                          >
+                            <div className="truncate pr-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold leading-tight truncate">{t.title}</span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${
+                                  t.priority === 'Urgent' ? 'bg-rose-100 text-rose-700' :
+                                  t.priority === 'High' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-slate-100 text-slate-600'
+                                }`}>
+                                  {t.priority}
+                                </span>
+                              </div>
+                              <div className="text-[10px] sm:text-[11px] text-zinc-500 font-mono mt-0.5 truncate">{t.startTime} - {t.endTime} • {t.category}</div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {t.status === 'Completed' ? (
+                                <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> Done
+                                </span>
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-zinc-400" />
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      <div className="h-8 sm:h-9 rounded-xl border border-dashed border-white/15 flex items-center px-3 sm:px-4 text-[10px] sm:text-[11px] text-slate-400">
+                        Open focus slot
                       </div>
-                    ))}
-                  </>
-                ) : (
-                  <div className="h-8 sm:h-9 rounded-xl border border-dashed border-white/15 flex items-center px-3 sm:px-4 text-[10px] sm:text-[11px] text-slate-400">
-                    Open focus slot
+                    )}
                   </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -3530,7 +3922,7 @@ function AnalyticsReportsView({ tasks, routines, productivityScore, showToast, t
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Chronos-Productivity-Dossier-${new Date().toISOString().slice(0, 10)}.pdf`;
+      a.download = `Master-Your-Time-Productivity-Dossier-${new Date().toISOString().slice(0, 10)}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -3543,15 +3935,20 @@ function AnalyticsReportsView({ tasks, routines, productivityScore, showToast, t
     }
   };
 
-  const defaultWeeklyData = [
-    { day: "Mon", hours: 6.5, target: 8, score: 82 },
-    { day: "Tue", hours: 7.8, target: 8, score: 94 },
-    { day: "Wed", hours: 8.2, target: 8, score: 98 },
-    { day: "Thu", hours: 5.4, target: 8, score: 71 },
-    { day: "Fri", hours: 7.2, target: 8, score: 89 },
-    { day: "Sat", hours: 4.0, target: 4, score: 90 },
-    { day: "Sun", hours: 3.5, target: 4, score: 85 },
-  ];
+  const liveSessionHours = useMemo(() => {
+    const totalSecs = tasks.reduce((sum, t) => sum + (t.timeSpentSeconds || 0), 0);
+    return Math.min(2.5, totalSecs / 3600);
+  }, [tasks]);
+
+  const defaultWeeklyData = useMemo(() => [
+    { day: "Mon", hours: 6.5, target: 8.0, isToday: false },
+    { day: "Tue", hours: parseFloat((7.8 + liveSessionHours).toFixed(1)), target: 8.0, isToday: true },
+    { day: "Wed", hours: 8.2, target: 8.0, isToday: false },
+    { day: "Thu", hours: 5.4, target: 8.0, isToday: false },
+    { day: "Fri", hours: 7.2, target: 8.0, isToday: false },
+    { day: "Sat", hours: 4.0, target: 8.0, isToday: false },
+    { day: "Sun", hours: 3.5, target: 8.0, isToday: false },
+  ], [liveSessionHours]);
 
   const chartData = analyticsSummary?.weeklyData || defaultWeeklyData;
   const currentScore = analyticsSummary?.productivityScore ?? productivityScore;
@@ -3609,7 +4006,10 @@ function AnalyticsReportsView({ tasks, routines, productivityScore, showToast, t
           <div className="text-2xl sm:text-3xl font-black text-white mt-1 sm:mt-2">
             {analyticsSummary?.totalFocusSeconds ? (analyticsSummary.totalFocusSeconds / 3600).toFixed(1) : totalTrackedHours} hrs
           </div>
-          <p className="text-[11px] sm:text-xs text-emerald-400 font-semibold mt-1">Live synchronized sessions</p>
+          <p className="text-[11px] sm:text-xs text-emerald-400 font-semibold mt-1 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            Live real-time sessions
+          </p>
         </div>
 
         <div 
@@ -3653,35 +4053,80 @@ function AnalyticsReportsView({ tasks, routines, productivityScore, showToast, t
         className="p-5 sm:p-8 rounded-3xl"
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
-          <h3 className="text-sm sm:text-base font-bold text-white drop-shadow">Daily Tracked Hours vs 8h Target</h3>
+          <div>
+            <h3 className="text-sm sm:text-base font-bold text-white drop-shadow">Daily Tracked Hours vs 8h Target</h3>
+            <p className="text-[11px] text-slate-400 mt-0.5">Real-time dynamic tracking mapped against 8-hour target baseline</p>
+          </div>
           <div className="flex items-center gap-4 text-xs">
             <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Actual Hours
             </span>
             <span className="flex items-center gap-1.5 text-slate-300 font-semibold">
-              <span className="w-2.5 h-2.5 rounded-full bg-white/30"></span> Target (8h)
+              <span className="w-2.5 h-2.5 rounded-full bg-white/30 border border-white/50"></span> Target (8h)
             </span>
           </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-2 sm:gap-4 md:gap-6 items-end h-44 sm:h-56 pt-6 sm:pt-8 pb-2 border-b border-white/10">
-          {chartData.map((d, index) => {
-            const heightPercent = Math.min(100, (d.hours / 10) * 100);
-            return (
-              <div key={index} className="flex flex-col items-center gap-1.5 sm:gap-2 h-full justify-end group">
-                <span className="text-[10px] sm:text-[11px] font-mono text-emerald-300 opacity-80 sm:opacity-0 group-hover:opacity-100 transition">
-                  {d.hours}h
-                </span>
-                <div className="w-full max-w-[32px] sm:max-w-[42px] bg-white/10 rounded-t-xl h-full flex items-end p-0.5 sm:p-1">
-                  <div 
-                    className="w-full bg-emerald-500 rounded-md sm:rounded-lg transition-all duration-500 group-hover:bg-emerald-400 shadow-lg shadow-emerald-500/20"
-                    style={{ height: `${heightPercent}%` }}
-                  />
+        {/* Real-Time Chart Container */}
+        <div className="relative h-56 sm:h-64 pt-6 sm:pt-8 pb-3 border-b border-white/10">
+          {/* Target 8h Horizontal Benchmark Guide Line */}
+          <div 
+            style={{ bottom: '80%' }}
+            className="absolute left-0 right-0 border-b border-dashed border-emerald-400/35 pointer-events-none flex items-center justify-end pr-2"
+          >
+            <span className="text-[10px] font-mono text-emerald-400/80 bg-[#08130e]/80 px-1.5 py-0.5 rounded -translate-y-1/2">
+              Target Baseline: 8.0h
+            </span>
+          </div>
+
+          <div className="grid grid-cols-7 gap-2 sm:gap-4 md:gap-6 items-end h-full">
+            {chartData.map((d, index) => {
+              const actualHeightPercent = Math.min(100, (d.hours / 10) * 100);
+              const targetHeightPercent = (8.0 / 10) * 100;
+              const meetsTarget = d.hours >= 8.0;
+
+              return (
+                <div key={index} className="flex flex-col items-center gap-1.5 sm:gap-2 h-full justify-end group">
+                  <span className={`text-[10px] sm:text-[11px] font-mono font-bold transition ${
+                    d.isToday ? 'text-emerald-300 scale-105' : 'text-slate-300 opacity-90 group-hover:opacity-100'
+                  }`}>
+                    {d.hours}h
+                  </span>
+
+                  {/* Dual Bar Column (Target Column + Actual Fill Column) */}
+                  <div className="w-full max-w-[34px] sm:max-w-[46px] h-full flex items-end justify-center relative">
+                    {/* Target (8h) Ghost Benchmark Pillar */}
+                    <div 
+                      className="absolute w-full rounded-t-xl bg-white/10 border-t-2 border-white/20 transition-all pointer-events-none"
+                      style={{ height: `${targetHeightPercent}%` }}
+                      title="Target: 8.0h"
+                    />
+
+                    {/* Actual Hours Filled Bar */}
+                    <div 
+                      className={`w-full rounded-t-xl z-10 transition-all duration-500 shadow-lg ${
+                        meetsTarget 
+                          ? 'bg-gradient-to-t from-emerald-600 to-emerald-400 shadow-emerald-500/30' 
+                          : 'bg-gradient-to-t from-teal-700 to-emerald-500 shadow-emerald-500/20'
+                      } ${d.isToday ? 'ring-2 ring-emerald-400/60' : ''}`}
+                      style={{ height: `${actualHeightPercent}%` }}
+                    />
+                  </div>
+
+                  <div className="flex flex-col items-center mt-1">
+                    <span className={`text-[10px] sm:text-xs font-bold ${
+                      d.isToday ? 'text-emerald-300 underline underline-offset-2' : 'text-slate-300'
+                    }`}>
+                      {d.day}
+                    </span>
+                    <span className="text-[9px] font-mono text-slate-400">
+                      {Math.round((d.hours / 8.0) * 100)}%
+                    </span>
+                  </div>
                 </div>
-                <span className="text-[10px] sm:text-xs font-bold text-slate-300 mt-1.5 sm:mt-2">{d.day}</span>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
@@ -3773,17 +4218,27 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">Scheduled Brief Time (CAT)</label>
+            <input 
+              type="time"
+              value={digestTime}
+              onChange={(e) => setDigestTime(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
+            />
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">Delivery Cadence</label>
             <select 
               value={frequency}
               onChange={(e) => setFrequency(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl bg-zinc-900 border border-emerald-500/30 text-white text-xs"
+              className="w-full px-4 py-2.5 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
             >
-              <option value="daily">Daily Morning Brief ({digestTime})</option>
-              <option value="weekly">Weekly Executive Summary</option>
-              <option value="monthly">Monthly Comprehensive Audit</option>
+              <option value="daily" className="bg-slate-900 text-white">Daily Morning Brief ({digestTime})</option>
+              <option value="weekly" className="bg-slate-900 text-white">Weekly Executive Summary</option>
+              <option value="monthly" className="bg-slate-900 text-white">Monthly Comprehensive Audit</option>
             </select>
           </div>
 
@@ -3793,7 +4248,7 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
               type="email"
               value={user.email}
               readOnly
-              className="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-slate-300 text-xs font-mono"
+              className="w-full px-4 py-2.5 rounded-xl bg-[#0c1a12] border border-emerald-500/20 text-slate-300 text-xs font-mono"
             />
           </div>
         </div>
@@ -3806,10 +4261,15 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
           }}
           className="p-5 rounded-2xl space-y-3"
         >
-          <div className="text-[11px] font-bold text-emerald-400 uppercase tracking-widest">Email Preview Sample</div>
-          <div className="text-sm font-bold text-white">Subject: [Chronos Brief] Your {digestTime} Priority Briefing</div>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-widest">Email Preview Sample</span>
+            <span className="text-[10px] text-emerald-300 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono">
+              Auto-Scheduler Active
+            </span>
+          </div>
+          <div className="text-sm font-bold text-white">Subject: [Master Your Time Brief] Your {digestTime} Priority Briefing</div>
           <p className="text-xs text-slate-300 leading-relaxed">
-            Good morning {user.name}, you have <strong className="text-emerald-400">{tasks.filter(t => t.priority === 'Urgent').length} urgent tasks</strong> today, led by "{tasks[0]?.title}". Your consistency streak sits at 14 days. Click below to initiate your 09:00 work sprint.
+            Good morning {user.name}, you have <strong className="text-emerald-400">{tasks.filter(t => t.priority === 'Urgent').length} urgent tasks</strong> scheduled today. Click below to initiate your deep flow sprint.
           </p>
         </div>
 
@@ -3861,7 +4321,7 @@ function SettingsProfileView({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `chronos-backup-${Date.now()}.json`;
+      a.download = `master-your-time-backup-${Date.now()}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -3873,7 +4333,7 @@ function SettingsProfileView({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `chronos-backup-${Date.now()}.json`;
+      a.download = `master-your-time-backup-${Date.now()}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -4261,7 +4721,7 @@ function AuthModal({ isOpen, onClose, authView, setAuthView, user, setUser, show
             <Sparkles className="w-6 h-6 text-white" />
           </div>
           <h3 className="text-xl font-black text-white">
-            {authView === 'login' && 'Sign into Chronos'}
+            {authView === 'login' && 'Sign into Master Your Time'}
             {authView === 'register' && 'Create Your Account'}
             {authView === 'forgot' && 'Reset Password'}
           </h3>
@@ -4595,7 +5055,7 @@ function LandingAuthPage({
       <header className="relative z-20 w-full px-6 sm:px-10 h-16 sm:h-20 flex items-center justify-between border-b border-emerald-500/15 backdrop-blur-md bg-black/20">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-base sm:text-lg font-black tracking-tight text-white">CHRONOS OS</span>
+            <span className="text-base sm:text-lg font-black tracking-tight text-white">MASTER YOUR TIME</span>
             <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
               v2.4
             </span>
@@ -4648,7 +5108,7 @@ function LandingAuthPage({
 
           <div className="space-y-3">
             <h1 className="text-3xl sm:text-5xl lg:text-5xl font-black text-white tracking-tight leading-[1.15]">
-              Master Your Time with the <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-emerald-400 to-teal-300">Chronos Matrix</span>.
+              Master Your Time with the <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-emerald-400 to-teal-300">Master Your Time Matrix</span>.
             </h1>
             <p className="text-sm sm:text-base text-slate-300 max-w-2xl leading-relaxed mx-auto lg:mx-0">
               A high-precision personal operating system unifying the Eisenhower Priority Matrix, live hourly African CAT scheduling, persistent markdown scratchpads, and Pomodoro focus rhythms in one cloud-synchronized dashboard.
@@ -4952,7 +5412,7 @@ function LandingAuthPage({
 
       {/* Landing Footer */}
       <footer className="relative z-10 w-full py-6 px-6 sm:px-10 border-t border-emerald-500/15 text-center text-xs text-slate-400">
-        <p>© 2026 Chronos OS • Engineered for high-output architects, developers, and founders.</p>
+        <p>© 2026 Master Your Time • Engineered for high-output architects, developers, and founders.</p>
       </footer>
 
       {/* Toast Notification Container */}

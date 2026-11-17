@@ -65,7 +65,7 @@ This code will expire in 30 minutes. If you did not initiate this request, you c
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #08130e; color: #f1f5f9; padding: 24px; margin: 0;">
       <div style="max-width: 480px; margin: 0 auto; background: #0e1c14; border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 20px; padding: 32px; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
         <div style="text-align: center; margin-bottom: 24px;">
-          <h1 style="color: #34d399; font-size: 24px; font-weight: 800; margin: 0;">CHRONOS OS</h1>
+          <h1 style="color: #34d399; font-size: 24px; font-weight: 800; margin: 0;">MASTER YOUR TIME</h1>
           <p style="color: #94a3b8; font-size: 13px; margin-top: 4px;">Personal Productivity & Time Architecture</p>
         </div>
         <h2 style="font-size: 18px; color: #ffffff; margin-bottom: 12px;">Password Recovery Request</h2>
@@ -107,7 +107,7 @@ Sign into your workspace anytime to plan daily matrix schedules, track focus tim
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #08130e; color: #f1f5f9; padding: 24px; margin: 0;">
       <div style="max-width: 480px; margin: 0 auto; background: #0e1c14; border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 20px; padding: 32px; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
         <div style="text-align: center; margin-bottom: 24px;">
-          <h1 style="color: #34d399; font-size: 24px; font-weight: 800; margin: 0;">CHRONOS OS</h1>
+          <h1 style="color: #34d399; font-size: 24px; font-weight: 800; margin: 0;">MASTER YOUR TIME</h1>
           <p style="color: #94a3b8; font-size: 13px; margin-top: 4px;">Welcome to Your Workspace</p>
         </div>
         <h2 style="font-size: 18px; color: #ffffff; margin-bottom: 12px;">Welcome, {name}!</h2>
@@ -156,7 +156,7 @@ async def dispatch_digest_email(user: Dict[str, Any], tasks: List[Dict[str, Any]
     <head><meta charset="utf-8"></head>
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #08130e; color: #f1f5f9; padding: 24px; margin: 0;">
       <div style="max-width: 520px; margin: 0 auto; background: #0e1c14; border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 20px; padding: 32px; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
-        <h1 style="color: #34d399; font-size: 22px; font-weight: 800; margin: 0 0 16px 0;">CHRONOS OS BRIEFING</h1>
+        <h1 style="color: #34d399; font-size: 22px; font-weight: 800; margin: 0 0 16px 0;">MASTER YOUR TIME BRIEFING</h1>
         <p style="font-size: 15px; color: #ffffff; margin-bottom: 16px;">Good day, <strong>{name}</strong>!</p>
         <p style="font-size: 13px; color: #cbd5e1; line-height: 1.6;">{digest['body'].replace(chr(10), '<br>')}</p>
         <div style="border-top: 1px solid rgba(255,255,255,0.1); margin-top: 24px; padding-top: 16px; font-size: 11px; color: #64748b;">

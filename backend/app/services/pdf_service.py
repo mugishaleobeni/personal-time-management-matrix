@@ -56,7 +56,7 @@ def generate_productivity_pdf(user: Dict[str, Any], tasks: List[Dict[str, Any]],
     elements = []
 
     # Title & Metadata
-    elements.append(Paragraph("CHRONOS OS • PRODUCTIVITY DOSSIER", title_style))
+    elements.append(Paragraph("MASTER YOUR TIME • PRODUCTIVITY DOSSIER", title_style))
     elements.append(Paragraph(
         f"Generated for: <b>{user.get('name', 'Alex Sterling')}</b> ({user.get('role', 'Lead Systems Architect')}) | "
         f"Date: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",

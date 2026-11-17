@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
     await db_manager.close()
 
 app = FastAPI(
-    title="Chronos OS - Personal Productivity & Time Management API",
+    title="Master Your Time - Personal Productivity & Time Management API",
     description="Production-grade asynchronous backend powered by FastAPI, MongoDB Atlas, and JWT authentication.",
     version="1.0.0",
     lifespan=lifespan
@@ -62,7 +62,7 @@ app.include_router(notifications.router, prefix="/api")
 async def root_health():
     return {
         "status": "online",
-        "service": "Chronos Productivity OS Backend",
+        "service": "Master Your Time Backend",
         "database_status": db_manager.connection_status
     }
 
@@ -85,6 +85,6 @@ async def serve_production_spa(full_path: str):
         return FileResponse(str(index_file))
     return {
         "status": "online",
-        "service": "Chronos Productivity OS Backend",
+        "service": "Master Your Time Backend",
         "database_status": db_manager.connection_status
     }

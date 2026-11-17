@@ -228,6 +228,40 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         createdAt=current_user.get("createdAt")
     )
 
+@router.post("/upload-avatar")
+async def upload_avatar(data: dict, current_user: dict = Depends(get_current_user)):
+    user_id = current_user["_id"]
+    users_col = get_col("users")
+    avatar_data = data.get("avatar") or data.get("avatar_data") or ""
+    avatar_url = avatar_data
+    
+    # Cloudinary Integration
+    if settings.CLOUDINARY_API_KEY and avatar_data.startswith("data:image"):
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.post(
+                    f"https://api.cloudinary.com/v1_1/{settings.CLOUDINARY_CLOUD_NAME}/image/upload",
+                    data={
+                        "file": avatar_data,
+                        "upload_preset": settings.CLOUDINARY_UPLOAD_PRESET,
+                        "api_key": settings.CLOUDINARY_API_KEY
+                    }
+                )
+                if res.status_code == 200:
+                    cloudinary_res = res.json()
+                    avatar_url = cloudinary_res.get("secure_url", avatar_url)
+                    logger.info(f"Cloudinary upload succeeded: {avatar_url}")
+        except Exception as e:
+            logger.warning(f"Cloudinary upload skipped or fallback applied: {e}")
+            
+    # Persist avatar URL directly into MongoDB Atlas
+    await users_col.update_one(
+        {"_id": user_id},
+        {"$set": {"avatar": avatar_url, "updatedAt": datetime.utcnow()}}
+    )
+    return {"status": "success", "avatar": avatar_url}
+
 @router.put("/profile", response_model=UserResponse)
 async def update_profile(data: UserUpdate, current_user: dict = Depends(get_current_user)):
     users_col = get_col("users")

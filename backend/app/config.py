@@ -35,7 +35,13 @@ class Settings(BaseSettings):
     GMAIL_APP_PASSWORD: str = Field(default="lygz ltwu itmf mrtz")
     SMTP_PASSWORD: str = Field(default="lygz ltwu itmf mrtz")
     SMTP_FROM_EMAIL: str = Field(default="mugishaleobeni0@gmail.com")
-    SMTP_FROM_NAME: str = Field(default="Chronos OS")
+    SMTP_FROM_NAME: str = Field(default="Master Your Time")
+
+    # Cloudinary Image Storage
+    CLOUDINARY_CLOUD_NAME: str = Field(default="master-your-time", description="Cloudinary cloud name")
+    CLOUDINARY_API_KEY: str = Field(default="lQkpLZmthjXKYgB7EGrFhFlxo5g", description="Cloudinary API key")
+    CLOUDINARY_API_SECRET: str = Field(default="lQkpLZmthjXKYgB7EGrFhFlxo5g", description="Cloudinary API secret")
+    CLOUDINARY_UPLOAD_PRESET: str = Field(default="lQkpLZmthjXKYgB7EGrFhFlxo5g", description="Cloudinary upload preset")
 
     @property
     def email_password(self) -> str:
