@@ -46,7 +46,7 @@ export default function App() {
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [headerSearchQuery, setHeaderSearchQuery] = useState('');
 
-  // Validate existing session token on application load
+  // Validate existing session token on application load and fetch cloud data
   useEffect(() => {
     async function verifySession() {
       const token = api.getToken();
@@ -59,12 +59,20 @@ export default function App() {
         if (me && me.email) {
           setUser(me);
           setIsAuthenticated(true);
+          // Immediately load user's tasks, routines, and notes from Atlas
+          const [taskList, routineList, noteList] = await Promise.all([
+            api.getTasks().catch(() => null),
+            api.getRoutines().catch(() => null),
+            api.getNotes().catch(() => null)
+          ]);
+          if (Array.isArray(taskList)) setTasks(taskList);
+          if (Array.isArray(routineList)) setRoutines(routineList);
+          if (Array.isArray(noteList)) setNotes(noteList);
         } else {
           api.setToken(null);
           setIsAuthenticated(false);
         }
       } catch (err) {
-        // If server is temporarily restarting or unreachable, keep offline session if token exists
         console.warn("Session verification note:", err);
       }
     }
@@ -78,7 +86,7 @@ export default function App() {
   const navContainerRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Synchronize with FastAPI backend on startup & periodic real-time background refresh
+  // Synchronize with FastAPI backend on startup & real-time background refresh
   useEffect(() => {
     if (!isAuthenticated) return;
     let isMounted = true;
@@ -91,7 +99,7 @@ export default function App() {
           api.getNotes().catch(() => null)
         ]);
         if (!isMounted) return;
-        if (userData) setUser(userData);
+        if (userData && userData.email) setUser(userData);
         if (Array.isArray(taskList)) setTasks(taskList);
         if (Array.isArray(routineList)) setRoutines(routineList);
         if (Array.isArray(noteList)) setNotes(noteList);
@@ -101,9 +109,17 @@ export default function App() {
     }
     loadData();
 
-    const syncInterval = setInterval(loadData, 8000);
+    // Refreshes data whenever user switches back to this tab/window
+    const onFocus = () => loadData();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) loadData();
+    });
+
+    const syncInterval = setInterval(loadData, 20000);
     return () => { 
       isMounted = false;
+      window.removeEventListener('focus', onFocus);
       clearInterval(syncInterval);
     };
   }, [isAuthenticated]);
@@ -602,6 +618,9 @@ export default function App() {
         user={user}
         setUser={setUser}
         setIsAuthenticated={setIsAuthenticated}
+        setTasks={setTasks}
+        setRoutines={setRoutines}
+        setNotes={setNotes}
         currentTime={currentTime}
         showToast={showToast}
         themeMode={themeMode}
@@ -1175,6 +1194,10 @@ export default function App() {
           setAuthView={setAuthView}
           user={user}
           setUser={setUser}
+          setIsAuthenticated={setIsAuthenticated}
+          setTasks={setTasks}
+          setRoutines={setRoutines}
+          setNotes={setNotes}
           showToast={showToast}
           themeMode={themeMode}
         />
@@ -5087,7 +5110,7 @@ function SettingsProfileView({
 // 10. AUTHENTICATION MODAL (Create Account, Sign In, Forgot Password)
 // ==========================================================
 
-function AuthModal({ isOpen, onClose, authView, setAuthView, user, setUser, showToast, themeMode }) {
+function AuthModal({ isOpen, onClose, authView, setAuthView, user, setUser, setIsAuthenticated, setTasks, setRoutines, setNotes, showToast, themeMode }: any) {
   const [nameInput, setNameInput] = useState('');
   const [emailInput, setEmailInput] = useState(user.email || '');
   const [passInput, setPassInput] = useState('');
@@ -5109,6 +5132,17 @@ function AuthModal({ isOpen, onClose, authView, setAuthView, user, setUser, show
         }
         const res = await api.login(emailInput.trim(), passInput);
         setUser(res.user);
+        if (setIsAuthenticated) setIsAuthenticated(true);
+        try {
+          const [taskList, routineList, noteList] = await Promise.all([
+            api.getTasks().catch(() => null),
+            api.getRoutines().catch(() => null),
+            api.getNotes().catch(() => null)
+          ]);
+          if (Array.isArray(taskList) && setTasks) setTasks(taskList);
+          if (Array.isArray(routineList) && setRoutines) setRoutines(routineList);
+          if (Array.isArray(noteList) && setNotes) setNotes(noteList);
+        } catch {}
         showToast(`Welcome back, ${res.user.name}! 🚀`);
         onClose();
       } else if (authView === 'register') {
@@ -5134,7 +5168,19 @@ function AuthModal({ isOpen, onClose, authView, setAuthView, user, setUser, show
         }
         const res = await api.register(nameInput.trim(), emailInput.trim(), passInput);
         setUser(res.user);
+        if (setIsAuthenticated) setIsAuthenticated(true);
+        try {
+          const [taskList, routineList, noteList] = await Promise.all([
+            api.getTasks().catch(() => null),
+            api.getRoutines().catch(() => null),
+            api.getNotes().catch(() => null)
+          ]);
+          if (Array.isArray(taskList) && setTasks) setTasks(taskList);
+          if (Array.isArray(routineList) && setRoutines) setRoutines(routineList);
+          if (Array.isArray(noteList) && setNotes) setNotes(noteList);
+        } catch {}
         showToast(`Welcome, ${res.user.name}! Your workspace is ready.`);
+        onClose();
         onClose();
       } else if (authView === 'forgot') {
         if (forgotStep === 'request') {
@@ -5402,6 +5448,9 @@ function LandingAuthPage({
   user,
   setUser,
   setIsAuthenticated,
+  setTasks,
+  setRoutines,
+  setNotes,
   currentTime,
   showToast,
   themeMode,
@@ -5409,7 +5458,7 @@ function LandingAuthPage({
   authView,
   setAuthView,
   toastMessage
-}) {
+}: any) {
   const [nameInput, setNameInput] = useState('');
   const [emailInput, setEmailInput] = useState('');
   const [passInput, setPassInput] = useState('');
@@ -5439,6 +5488,17 @@ function LandingAuthPage({
         const res = await api.login(emailInput.trim(), passInput);
         setUser(res.user);
         setIsAuthenticated(true);
+        // Immediately fetch user's tasks, routines, and notes from Atlas
+        try {
+          const [taskList, routineList, noteList] = await Promise.all([
+            api.getTasks().catch(() => null),
+            api.getRoutines().catch(() => null),
+            api.getNotes().catch(() => null)
+          ]);
+          if (Array.isArray(taskList) && setTasks) setTasks(taskList);
+          if (Array.isArray(routineList) && setRoutines) setRoutines(routineList);
+          if (Array.isArray(noteList) && setNotes) setNotes(noteList);
+        } catch {}
         showToast(`Welcome back, ${res.user.name}! 🚀`);
       } else if (authView === 'register') {
         if (!nameInput.trim()) {
@@ -5462,6 +5522,19 @@ function LandingAuthPage({
           return;
         }
         const res = await api.register(nameInput.trim(), emailInput.trim(), passInput);
+        setUser(res.user);
+        setIsAuthenticated(true);
+        try {
+          const [taskList, routineList, noteList] = await Promise.all([
+            api.getTasks().catch(() => null),
+            api.getRoutines().catch(() => null),
+            api.getNotes().catch(() => null)
+          ]);
+          if (Array.isArray(taskList) && setTasks) setTasks(taskList);
+          if (Array.isArray(routineList) && setRoutines) setRoutines(routineList);
+          if (Array.isArray(noteList) && setNotes) setNotes(noteList);
+        } catch {}
+        showToast(`Welcome, ${res.user.name}! Your workspace is ready.`);
         setUser(res.user);
         setIsAuthenticated(true);
         showToast(`Welcome, ${res.user.name}! Your workspace is ready.`);

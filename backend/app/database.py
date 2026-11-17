@@ -28,12 +28,13 @@ class DatabaseManager:
             logger.info("Connecting to MongoDB Atlas...")
             self.client = AsyncIOMotorClient(
                 settings.MONGODB_URI,
-                maxPoolSize=50,
-                minPoolSize=10,
-                maxIdleTimeMS=45000,
-                connectTimeoutMS=2500,
-                serverSelectionTimeoutMS=2000,
-                waitQueueTimeoutMS=2500
+                maxPoolSize=25,
+                minPoolSize=1,
+                maxIdleTimeMS=30000,
+                connectTimeoutMS=6000,
+                serverSelectionTimeoutMS=6000,
+                waitQueueTimeoutMS=6000,
+                retryWrites=True
             )
             self.db = self.client[settings.DATABASE_NAME]
             # Ping database to verify connection
@@ -42,12 +43,13 @@ class DatabaseManager:
             self.connection_status = "connected"
             logger.info(f"Successfully connected to MongoDB Atlas database: '{settings.DATABASE_NAME}'")
             
-            # Setup indexes
-            await self.setup_indexes()
+            # Setup indexes in background
+            asyncio.create_task(self.setup_indexes())
         except Exception as e:
-            self.is_connected = False
-            self.connection_status = f"connection_failed: {str(e)}"
-            logger.error(f"MongoDB connection failed: {e}")
+            # Keep db reference so Motor handles retries on real queries
+            self.is_connected = self.db is not None
+            self.connection_status = f"connection_warning: {str(e)}"
+            logger.warning(f"MongoDB initial ping warning (Motor will retry queries automatically): {e}")
 
     async def setup_indexes(self):
         """Creates appropriate collections and indexes in MongoDB Atlas"""

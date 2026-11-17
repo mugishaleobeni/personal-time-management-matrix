@@ -20,8 +20,6 @@ async def list_routines(
     current_user: dict = Depends(get_current_user)
 ):
     user_id = current_user["_id"]
-    await seed_user_defaults(user_id)
-    
     query = {"userId": user_id}
     if period and period != "All":
         query["period"] = period

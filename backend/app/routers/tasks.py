@@ -37,8 +37,6 @@ async def list_tasks(
     current_user: dict = Depends(get_current_user)
 ):
     user_id = current_user["_id"]
-    await seed_user_defaults(user_id)
-    
     query = {"userId": user_id}
     if category and category != "All":
         query["category"] = category

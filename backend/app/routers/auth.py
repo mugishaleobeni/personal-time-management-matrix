@@ -61,12 +61,9 @@ async def register(data: UserCreate):
         createdAt=user_doc["createdAt"]
     )
 
-    # Dispatch onboarding welcome email directly
-    try:
-        await send_welcome_email(user_doc["email"], user_doc["name"])
-        logger.info(f"Onboarding welcome email dispatched directly to {user_doc['email']}")
-    except Exception as e:
-        logger.warning(f"Welcome email dispatch skipped: {e}")
+    # Dispatch onboarding welcome email asynchronously in background task (non-blocking)
+    import asyncio
+    asyncio.create_task(send_welcome_email(user_doc["email"], user_doc["name"]))
 
     return TokenResponse(access_token=token, token_type="bearer", user=user_resp)
 
