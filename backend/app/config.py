@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     
     ENVIRONMENT: str = Field(default="production", description="Environment: development or production")
     ALLOWED_ORIGINS: str = Field(
-        default="http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000",
+        default="http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000,https://personal-time-management-matrix.pages.dev",
         description="Comma-separated allowed origins"
     )
     HOST: str = Field(default="0.0.0.0")
