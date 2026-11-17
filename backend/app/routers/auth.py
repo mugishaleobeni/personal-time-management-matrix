@@ -34,7 +34,7 @@ async def register(data: UserCreate):
         "role": "Lead Systems Architect",
         "timezone": "Africa/Kigali (CAT)",
         "timeFormat": "24h",
-        "avatar": DEFAULT_AVATAR,
+        "avatar": "",
         "bgImage": "",
         "emailDigest": True,
         "emailTime": "08:00",
@@ -53,7 +53,7 @@ async def register(data: UserCreate):
         role=user_doc["role"],
         timezone=user_doc["timezone"],
         timeFormat=user_doc["timeFormat"],
-        avatar=user_doc["avatar"],
+        avatar=user_doc.get("avatar") or "",
         bgImage=user_doc["bgImage"],
         emailDigest=user_doc["emailDigest"],
         emailTime=user_doc["emailTime"],
@@ -61,9 +61,10 @@ async def register(data: UserCreate):
         createdAt=user_doc["createdAt"]
     )
 
-    # Dispatch onboarding welcome email asynchronously
+    # Dispatch onboarding welcome email directly
     try:
         await send_welcome_email(user_doc["email"], user_doc["name"])
+        logger.info(f"Onboarding welcome email dispatched directly to {user_doc['email']}")
     except Exception as e:
         logger.warning(f"Welcome email dispatch skipped: {e}")
 
@@ -109,8 +110,7 @@ async def forgot_password(data: ForgotPasswordRequest):
     
     return {
         "status": "success",
-        "message": f"Recovery code sent to {data.email}.",
-        "code": recovery_code
+        "message": f"A 6-digit recovery code has been sent to {data.email}. Please check your inbox or spam folder."
     }
 
 @router.post("/reset-password")
@@ -201,7 +201,7 @@ async def login(data: UserLogin):
         role=user.get("role", "Lead Systems Architect"),
         timezone=user.get("timezone", "Africa/Kigali (CAT)"),
         timeFormat=user.get("timeFormat", "24h"),
-        avatar=user.get("avatar") or DEFAULT_AVATAR,
+        avatar=user.get("avatar") or "",
         bgImage=user.get("bgImage") or "",
         emailDigest=user.get("emailDigest", True),
         emailTime=user.get("emailTime", "08:00"),
@@ -220,7 +220,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         role=current_user.get("role", "Lead Systems Architect"),
         timezone=current_user.get("timezone", "Africa/Kigali (CAT)"),
         timeFormat=current_user.get("timeFormat", "24h"),
-        avatar=current_user.get("avatar") or DEFAULT_AVATAR,
+        avatar=current_user.get("avatar") or "",
         bgImage=current_user.get("bgImage") or "",
         emailDigest=current_user.get("emailDigest", True),
         emailTime=current_user.get("emailTime", "08:00"),
@@ -233,6 +233,14 @@ async def upload_avatar(data: dict, current_user: dict = Depends(get_current_use
     user_id = current_user["_id"]
     users_col = get_col("users")
     avatar_data = data.get("avatar") or data.get("avatar_data") or ""
+    
+    # Enforce maximum image upload size of 1MB (base64 string is ~1.33x binary size)
+    if len(avatar_data) > 1_500_000:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Image size exceeds 1MB limit. Please upload an image under 1MB."
+        )
+    
     avatar_url = avatar_data
     
     # Cloudinary Integration
@@ -281,7 +289,7 @@ async def update_profile(data: UserUpdate, current_user: dict = Depends(get_curr
         role=updated.get("role", "Lead Systems Architect"),
         timezone=updated.get("timezone", "Africa/Kigali (CAT)"),
         timeFormat=updated.get("timeFormat", "24h"),
-        avatar=updated.get("avatar") or DEFAULT_AVATAR,
+        avatar=updated.get("avatar") or "",
         bgImage=updated.get("bgImage") or "",
         emailDigest=updated.get("emailDigest", True),
         emailTime=updated.get("emailTime", "08:00"),

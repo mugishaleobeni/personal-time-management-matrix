@@ -2,7 +2,7 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from datetime import datetime
 
-DEFAULT_AVATAR = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80"
+DEFAULT_AVATAR = ""
 
 class UserBase(BaseModel):
     name: str = "Alex Sterling"
@@ -10,7 +10,7 @@ class UserBase(BaseModel):
     role: str = "Lead Systems Architect"
     timezone: str = "Africa/Kigali (CAT)"
     timeFormat: str = "24h"
-    avatar: str = DEFAULT_AVATAR
+    avatar: str = ""
     bgImage: str = ""
     emailDigest: bool = True
     emailTime: str = "08:00"

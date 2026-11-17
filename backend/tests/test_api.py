@@ -1,10 +1,12 @@
 import sys
 import os
 import uuid
+import asyncio
 sys.path.insert(0, os.path.abspath("backend"))
 
 from fastapi.testclient import TestClient
 from app.main import app
+from app.repository import get_col
 
 client = TestClient(app)
 
@@ -48,9 +50,13 @@ def test_auth_and_crud():
     })
     assert r_forgot.status_code == 200, r_forgot.text
     forgot_data = r_forgot.json()
-    recovery_code = forgot_data["code"]
+    assert "code" not in forgot_data, "Recovery code must not be exposed in API response"
+    
+    # Retrieve code from DB for test verification
+    user_db = asyncio.run(get_col("users").find_one({"email": test_user_email}))
+    recovery_code = user_db["reset_code"]
     assert len(recovery_code) == 6
-    print("Forgot Password request OK, recovery code:", recovery_code)
+    print("Forgot Password request OK, recovery code sent via email:", recovery_code)
 
     # Test Reset Password with code and new password
     r_reset = client.post("/api/auth/reset-password", json={

@@ -18,18 +18,47 @@ from app.routers import (
     system
 )
 
+import asyncio
+from datetime import datetime
+from app.repository import get_col
+from app.services.email_service import dispatch_digest_email
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 logger = logging.getLogger("chronos.main")
 
+async def scheduled_email_worker():
+    """Background daemon to dispatch scheduled daily digests matching user preferred emailTime."""
+    logger.info("Automated email digest scheduler daemon active.")
+    while True:
+        try:
+            await asyncio.sleep(60)
+            now_str = datetime.utcnow().strftime("%H:%M")
+            users_col = get_col("users")
+            users = await users_col.find({"emailDigest": True, "emailTime": now_str}).to_list(100)
+            for u in users:
+                try:
+                    tasks = await get_col("tasks").find({"userId": u["_id"]}).to_list(100)
+                    routines = await get_col("routines").find({"userId": u["_id"]}).to_list(100)
+                    await dispatch_digest_email(u, tasks, routines)
+                    logger.info(f"Dispatched automated scheduled digest to {u.get('email')}")
+                except Exception as ex:
+                    logger.warning(f"Digest delivery issue for {u.get('email')}: {ex}")
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning(f"Scheduled email worker error: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Initializing Chronos Backend Services...")
+    logger.info("Initializing Master Your Time Backend Services...")
     await db_manager.connect()
+    worker_task = asyncio.create_task(scheduled_email_worker())
     yield
-    logger.info("Shutting down Chronos Backend Services...")
+    worker_task.cancel()
+    logger.info("Shutting down Master Your Time Backend Services...")
     await db_manager.close()
 
 app = FastAPI(

@@ -16,12 +16,12 @@ import { api } from './services/api';
 // INITIAL MOCK DATA & PERSISTENT STORAGE KEYS
 // ==========================================
 
-const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80";
+const DEFAULT_AVATAR = "";
 
 const INITIAL_USER = {
   name: "Alex Sterling",
   email: "alex.sterling@devmatrix.io",
-  avatar: DEFAULT_AVATAR,
+  avatar: "",
   bgImage: "",
   role: "Lead Systems Architect",
   timezone: "Africa/Kigali (CAT)",
@@ -122,8 +122,9 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved);
         parsed.bgImage = "";
-        if (!parsed.avatar || parsed.avatar.includes('photo-1579783900882')) {
-          parsed.avatar = DEFAULT_AVATAR;
+        // If avatar is old stock Unsplash photo, reset to empty
+        if (parsed.avatar && parsed.avatar.includes('images.unsplash.com')) {
+          parsed.avatar = "";
         }
         return parsed;
       } catch (e) {
@@ -318,6 +319,12 @@ export default function App() {
   const handleFileUpload = (e) => {
     const file = e.target.files?.[0];
     if (file) {
+      // 1MB max image file size check
+      if (file.size > 1024 * 1024) {
+        showToast("Image size exceeds 1MB limit. Please upload an image under 1MB.");
+        if (e.target) e.target.value = '';
+        return;
+      }
       const reader = new FileReader();
       reader.onload = async (uploadEvent) => {
         const result = uploadEvent.target?.result;
@@ -653,11 +660,17 @@ export default function App() {
                 title="Click to sync photo & wallpaper"
                 className="w-10 h-10 md:w-[44px] md:h-[44px] rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 transition-all group-hover/auth:scale-105"
               >
-                <img 
-                  src={user.avatar} 
-                  alt={user.name} 
-                  className="w-7 h-7 md:w-8 md:h-8 rounded-full object-cover ring-2 ring-emerald-400/70 shadow-md" 
-                />
+                {user.avatar ? (
+                  <img 
+                    src={user.avatar} 
+                    alt={user.name} 
+                    className="w-7 h-7 md:w-8 md:h-8 rounded-full object-cover ring-2 ring-emerald-400/70 shadow-md" 
+                  />
+                ) : (
+                  <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center text-emerald-300 font-bold text-xs ring-2 ring-emerald-400/50 shadow-md">
+                    {user.name ? user.name.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5 text-emerald-400" />}
+                  </div>
+                )}
               </button>
             </div>
 
@@ -862,11 +875,17 @@ export default function App() {
                 title="Profile & Settings"
                 className="relative rounded-full overflow-hidden hover:opacity-90 active:scale-95 transition cursor-pointer shrink-0"
               >
-                <img
-                  src={user.avatar}
-                  alt={user.name}
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-1 ring-emerald-400/50"
-                />
+                {user.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name}
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-1 ring-emerald-400/50"
+                  />
+                ) : (
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center text-emerald-300 font-bold text-xs">
+                    {user.name ? user.name.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5 text-emerald-400" />}
+                  </div>
+                )}
               </button>
 
               {/* Sign Out Button in Header */}
@@ -4384,11 +4403,18 @@ function SettingsProfileView({
         
         <div className="flex flex-col sm:flex-row items-center gap-6 p-4 rounded-2xl bg-white/[0.05] border border-white/10">
           <div className="relative group/pic cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-            <img 
-              src={user.avatar || DEFAULT_AVATAR} 
-              alt={user.name} 
-              className="w-24 h-24 rounded-full object-cover ring-4 ring-emerald-500/70 shadow-xl group-hover/pic:scale-105 transition" 
-            />
+            {user.avatar ? (
+              <img 
+                src={user.avatar} 
+                alt={user.name} 
+                className="w-24 h-24 rounded-full object-cover ring-4 ring-emerald-500/70 shadow-xl group-hover/pic:scale-105 transition" 
+              />
+            ) : (
+              <div className="w-24 h-24 rounded-full bg-emerald-500/10 border-2 border-dashed border-emerald-400/50 flex flex-col items-center justify-center text-slate-400 group-hover/pic:border-emerald-400 group-hover/pic:bg-emerald-500/20 transition">
+                <User className="w-8 h-8 text-emerald-400/80 mb-1" />
+                <span className="text-[10px] text-emerald-300 font-semibold">No Avatar</span>
+              </div>
+            )}
             <div className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover/pic:opacity-100 flex items-center justify-center transition text-white">
               <Upload className="w-5 h-5 text-emerald-400" />
             </div>
@@ -4397,7 +4423,7 @@ function SettingsProfileView({
           <div className="flex-1 text-center sm:text-left space-y-2">
             <div className="text-base font-bold text-white">{user.name}</div>
             <p className="text-xs text-slate-300">
-              Customize your profile avatar and identity.
+              Customize your profile avatar and identity (Default has no picture; max upload size 1MB).
             </p>
             
             <div className="flex flex-wrap gap-2 pt-1 justify-center sm:justify-start">
@@ -4411,10 +4437,10 @@ function SettingsProfileView({
 
               <button 
                 type="button"
-                onClick={() => onPhotoChange(DEFAULT_AVATAR)}
+                onClick={() => onPhotoChange("")}
                 className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white text-xs font-semibold transition"
               >
-                Reset to Default
+                Remove Avatar
               </button>
             </div>
           </div>
@@ -4597,7 +4623,6 @@ function AuthModal({ isOpen, onClose, authView, setAuthView, user, setUser, show
   const [recoveryCodeInput, setRecoveryCodeInput] = useState('');
   const [forgotStep, setForgotStep] = useState('request'); // 'request' | 'verify'
   const [loading, setLoading] = useState(false);
-  const [receivedCode, setReceivedCode] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -4647,19 +4672,14 @@ function AuthModal({ isOpen, onClose, authView, setAuthView, user, setUser, show
             return;
           }
           try {
-            const res = await api.forgotPassword(emailInput.trim());
-            if (res.code) {
-              setReceivedCode(res.code);
-              setRecoveryCodeInput(res.code);
-            }
+            await api.forgotPassword(emailInput.trim());
+            setRecoveryCodeInput('');
             setForgotStep('verify');
-            showToast(`Recovery code sent! Code: ${res.code || 'Check your inbox'}`);
-          } catch (apiErr) {
-            const fallbackCode = String(Math.floor(100000 + Math.random() * 900000));
-            setReceivedCode(fallbackCode);
-            setRecoveryCodeInput(fallbackCode);
+            showToast("6-digit recovery code sent to your email! Please check your inbox or spam folder.");
+          } catch (apiErr: any) {
+            setRecoveryCodeInput('');
             setForgotStep('verify');
-            showToast(`Recovery code generated: ${fallbackCode}`);
+            showToast(apiErr?.message || "Recovery code sent to your email! Please check your inbox.");
           }
         } else {
           if (!recoveryCodeInput.trim()) {
@@ -4768,17 +4788,15 @@ function AuthModal({ isOpen, onClose, authView, setAuthView, user, setUser, show
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-xs font-semibold text-slate-300">6-Digit Recovery Code</label>
-                {receivedCode && (
-                  <span className="text-[10px] text-emerald-400 font-mono font-bold">Code: {receivedCode}</span>
-                )}
+                <span className="text-[10px] text-emerald-400 font-medium">Check email inbox/spam</span>
               </div>
               <input 
                 type="text" 
                 required
                 maxLength={6}
-                placeholder="e.g. 582910"
+                placeholder="Enter 6-digit code from email"
                 value={recoveryCodeInput}
-                onChange={(e) => setRecoveryCodeInput(e.target.value)}
+                onChange={(e) => setRecoveryCodeInput(e.target.value.replace(/\D/g, ''))}
                 className="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-emerald-400/30 text-white font-mono text-sm tracking-widest text-center focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>
@@ -4927,7 +4945,6 @@ function LandingAuthPage({
   const [recoveryCodeInput, setRecoveryCodeInput] = useState('');
   const [forgotStep, setForgotStep] = useState('request'); // 'request' | 'verify'
   const [loading, setLoading] = useState(false);
-  const [receivedCode, setReceivedCode] = useState('');
 
   const handleFillDemo = () => {
     setEmailInput('alex.sterling@devmatrix.io');
@@ -4984,19 +5001,14 @@ function LandingAuthPage({
             return;
           }
           try {
-            const res = await api.forgotPassword(emailInput.trim());
-            if (res.code) {
-              setReceivedCode(res.code);
-              setRecoveryCodeInput(res.code);
-            }
+            await api.forgotPassword(emailInput.trim());
+            setRecoveryCodeInput('');
             setForgotStep('verify');
-            showToast(`Recovery code sent! Code: ${res.code || 'Check your inbox'}`);
-          } catch (err) {
-            const fallbackCode = String(Math.floor(100000 + Math.random() * 900000));
-            setReceivedCode(fallbackCode);
-            setRecoveryCodeInput(fallbackCode);
+            showToast("6-digit recovery code sent to your email! Please check your inbox or spam folder.");
+          } catch (err: any) {
+            setRecoveryCodeInput('');
             setForgotStep('verify');
-            showToast(`Recovery code generated: ${fallbackCode}`);
+            showToast(err?.message || "Recovery code sent to your email! Please check your inbox.");
           }
         } else {
           if (!recoveryCodeInput.trim()) {
@@ -5274,17 +5286,15 @@ function LandingAuthPage({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-semibold text-slate-300">6-Digit Recovery Code</label>
-                    {receivedCode && (
-                      <span className="text-[10px] text-emerald-400 font-mono font-bold">Code: {receivedCode}</span>
-                    )}
+                    <span className="text-[10px] text-emerald-400 font-medium">Check email inbox/spam</span>
                   </div>
                   <input
                     type="text"
                     required
                     maxLength={6}
-                    placeholder="e.g. 582910"
+                    placeholder="Enter 6-digit code from email"
                     value={recoveryCodeInput}
-                    onChange={(e) => setRecoveryCodeInput(e.target.value)}
+                    onChange={(e) => setRecoveryCodeInput(e.target.value.replace(/\D/g, ''))}
                     className="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-emerald-400/40 text-white font-mono text-sm tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
