@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = Field(default="lygz ltwu itmf mrtz")
     SMTP_FROM_EMAIL: str = Field(default="mugishaleobeni0@gmail.com")
     SMTP_FROM_NAME: str = Field(default="Master Your Time")
+    RESEND_API_KEY: str = Field(default="", description="Resend HTTPS API key for cloud email delivery over port 443")
+    BREVO_API_KEY: str = Field(default="", description="Brevo HTTPS API key for cloud email delivery over port 443")
+    SENDGRID_API_KEY: str = Field(default="", description="SendGrid HTTPS API key for cloud email delivery over port 443")
 
     # Cloudinary Image Storage
     CLOUDINARY_CLOUD_NAME: str = Field(default="master-your-time", description="Cloudinary cloud name")

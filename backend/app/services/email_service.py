@@ -29,7 +29,7 @@ def _send_smtp_sync(to_email: str, subject: str, text_content: str, html_content
         msg.attach(MIMEText(html_content, "html", "utf-8"))
 
     try:
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=12) as server:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=3) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()
@@ -40,17 +40,81 @@ def _send_smtp_sync(to_email: str, subject: str, text_content: str, html_content
     except Exception as e_starttls:
         logger.warning(f"SMTP STARTTLS delivery to {to_email} encountered issue: {e_starttls}. Attempting SSL (Port 465) fallback...")
         try:
-            with smtplib.SMTP_SSL(settings.SMTP_HOST, 465, timeout=12) as ssl_server:
+            with smtplib.SMTP_SSL(settings.SMTP_HOST, 465, timeout=3) as ssl_server:
                 ssl_server.login(user, pwd)
                 ssl_server.sendmail(from_addr, [to_email], msg.as_string())
             logger.info(f"Successfully delivered email '{subject}' to {to_email} via SSL")
             return True
         except Exception as e_ssl:
-            logger.warning(f"SMTP SSL delivery to {to_email} also failed: {e_ssl}")
+            if "101" in str(e_ssl) or "Network is unreachable" in str(e_ssl):
+                logger.warning(
+                    f"Notice: Render Free Tier restricts outbound TCP ports 587/465 to prevent spam. "
+                    f"To enable 100% reliable cloud emails, configure RESEND_API_KEY or BREVO_API_KEY (operates over HTTPS port 443)."
+                )
+            else:
+                logger.warning(f"SMTP SSL delivery to {to_email} also failed: {e_ssl}")
             return False
 
 async def send_email_async(to_email: str, subject: str, text_content: str, html_content: Optional[str] = None) -> bool:
-    """Asynchronous wrapper for SMTP sending to avoid blocking event loop."""
+    """Dispatches email via HTTPS REST API (Resend/Brevo on port 443) or falls back to SMTP."""
+    # 1. Resend HTTPS API (Port 443, never blocked by Render)
+    if settings.RESEND_API_KEY:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                res = await client.post(
+                    "https://api.resend.com/emails",
+                    headers={
+                        "Authorization": f"Bearer {settings.RESEND_API_KEY.strip()}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "from": f"{settings.SMTP_FROM_NAME} <onboarding@resend.dev>",
+                        "to": [to_email],
+                        "subject": subject,
+                        "html": html_content or text_content,
+                        "text": text_content
+                    }
+                )
+                if res.status_code in [200, 201]:
+                    logger.info(f"Delivered email '{subject}' to {to_email} via Resend HTTPS API")
+                    return True
+                else:
+                    logger.warning(f"Resend HTTPS dispatch failed ({res.status_code}): {res.text}")
+        except Exception as e:
+            logger.warning(f"Resend HTTPS error: {e}")
+
+    # 2. Brevo (Sendinblue) HTTPS API (Port 443, never blocked by Render)
+    if settings.BREVO_API_KEY:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                res = await client.post(
+                    "https://api.brevo.com/v3/smtp/email",
+                    headers={
+                        "api-key": settings.BREVO_API_KEY.strip(),
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "sender": {
+                            "name": settings.SMTP_FROM_NAME,
+                            "email": settings.SMTP_FROM_EMAIL.strip() or "noreply@masteryourtime.io"
+                        },
+                        "to": [{"email": to_email}],
+                        "subject": subject,
+                        "htmlContent": html_content or text_content,
+                        "textContent": text_content
+                    }
+                )
+                if res.status_code in [200, 201]:
+                    logger.info(f"Delivered email '{subject}' to {to_email} via Brevo HTTPS API")
+                    return True
+                else:
+                    logger.warning(f"Brevo HTTPS dispatch failed ({res.status_code}): {res.text}")
+        except Exception as e:
+            logger.warning(f"Brevo HTTPS error: {e}")
+
+    # 3. Fallback to direct SMTP delivery
     return await asyncio.to_thread(_send_smtp_sync, to_email, subject, text_content, html_content)
 
 async def send_password_reset_code(to_email: str, name: str, code: str) -> bool:
@@ -180,8 +244,9 @@ async def dispatch_digest_email(user: Dict[str, Any], tasks: List[Dict[str, Any]
     
     return {
         "status": "success",
+        "delivered": sent,
         "recipient": recipient,
-        "digestSummary": f"Dispatched daily intelligence brief ({digest['tasksDue']} pending tasks, {digest['habitsDone']} completed habits)",
+        "digestSummary": f"Dispatched daily intelligence brief ({digest['tasksDue']} pending tasks, {digest['habitsDone']} completed habits) • Delivered={sent}",
         "tasksDueToday": digest["tasksDue"],
         "routinesCompleted": digest["habitsDone"],
         "dispatchedAt": datetime.utcnow().isoformat()

@@ -1392,8 +1392,8 @@ function DashboardView({
             <span>Active Focus Session</span>
             <TimerIcon className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="mt-3 sm:mt-4 flex items-baseline gap-2">
-            <span className="text-xl sm:text-2xl font-black text-white font-mono">{formatSeconds(timerSeconds)}</span>
+          <div className="mt-3 sm:mt-4 flex items-center justify-between gap-2">
+            <IPhoneWatchDisplay totalSeconds={timerSeconds} size="small" alwaysShowHours={false} />
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${timerStatus === 'running' ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/40' : 'bg-white/10 text-emerald-100/80'}`}>
               {timerStatus.toUpperCase()}
             </span>
@@ -2557,17 +2557,31 @@ function playTimerRingtone(ringtoneType = 'digital') {
   }
 }
 
-function IPhoneRollingDigit({ digit }: { digit: number | string }) {
+function IPhoneRollingDigit({ digit, className = "" }: { digit: number | string; className?: string }) {
   const num = typeof digit === 'string' ? parseInt(digit, 10) : digit;
-  const safeNum = isNaN(num) ? 0 : num;
+  const safeNum = isNaN(num) ? 0 : Math.max(0, Math.min(9, num));
   return (
-    <span className="inline-block relative h-[1.14em] w-[0.62em] overflow-hidden align-middle select-none font-mono">
+    <span 
+      className={`inline-block relative h-[1.14em] w-[0.62em] overflow-hidden align-middle select-none font-mono ${className}`}
+      style={{
+        maskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+        WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+        perspective: '400px'
+      }}
+    >
       <span 
-        className="flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.28)]"
-        style={{ transform: `translateY(-${safeNum * 10}%)` }}
+        className="flex flex-col transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
+        style={{ 
+          transform: `translateY(-${safeNum * 10}%)`,
+          willChange: 'transform'
+        }}
       >
         {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-          <span key={n} className="h-[1.14em] flex items-center justify-center leading-none">
+          <span 
+            key={n} 
+            className="h-[1.14em] flex items-center justify-center leading-none"
+            style={{ fontVariantNumeric: 'tabular-nums' }}
+          >
             {n}
           </span>
         ))}
@@ -2576,36 +2590,75 @@ function IPhoneRollingDigit({ digit }: { digit: number | string }) {
   );
 }
 
-function IPhoneWatchDisplay({ totalSeconds }: { totalSeconds: number }) {
+function IPhoneWatchDisplay({ 
+  totalSeconds, 
+  alwaysShowHours = true,
+  size = "large" 
+}: { 
+  totalSeconds: number; 
+  alwaysShowHours?: boolean;
+  size?: "small" | "medium" | "large";
+}) {
   const hrs = Math.floor(totalSeconds / 3600);
   const mins = Math.floor((totalSeconds % 3600) / 60);
   const secs = totalSeconds % 60;
 
+  const hrTens = Math.floor(hrs / 10);
+  const hrOnes = hrs % 10;
   const minTens = Math.floor(mins / 10);
   const minOnes = mins % 10;
   const secTens = Math.floor(secs / 10);
   const secOnes = secs % 10;
 
+  const showHours = alwaysShowHours || hrs > 0;
+
+  const sizeClasses = {
+    small: "text-lg sm:text-xl",
+    medium: "text-2xl sm:text-3xl",
+    large: "text-4xl sm:text-6xl md:text-7xl lg:text-8xl my-3 sm:my-5"
+  };
+
+  const colonClass = {
+    small: "mx-0.5",
+    medium: "mx-1",
+    large: "mx-1 sm:mx-2 self-start pt-1 sm:pt-3"
+  };
+
   return (
-    <div className="flex items-center justify-center font-mono font-black tracking-tight text-white select-none text-5xl sm:text-7xl md:text-8xl drop-shadow-2xl my-3 sm:my-5">
-      {hrs > 0 && (
+    <div className={`flex items-center justify-center font-mono font-black tracking-tight select-none drop-shadow-2xl ${sizeClasses[size]}`}>
+      {/* Hours with Rolling Digits */}
+      {showHours && (
         <>
-          <span className="flex items-center">
-            <IPhoneRollingDigit digit={Math.floor(hrs / 10)} />
-            <IPhoneRollingDigit digit={hrs % 10} />
-          </span>
-          <span className="text-emerald-400 mx-1 sm:mx-2 animate-pulse">:</span>
+          <div className="flex flex-col items-center">
+            <span className="flex items-center text-slate-200">
+              <IPhoneRollingDigit digit={hrTens} />
+              <IPhoneRollingDigit digit={hrOnes} />
+            </span>
+            {size === "large" && <span className="text-[9px] sm:text-[11px] font-sans tracking-widest text-slate-400 font-bold uppercase mt-1">HOURS</span>}
+          </div>
+          <span className={`text-emerald-400 ${colonClass[size]} animate-pulse`}>:</span>
         </>
       )}
-      <span className="flex items-center">
-        <IPhoneRollingDigit digit={minTens} />
-        <IPhoneRollingDigit digit={minOnes} />
-      </span>
-      <span className="text-emerald-400 mx-1 sm:mx-2 animate-pulse">:</span>
-      <span className="flex items-center text-emerald-300">
-        <IPhoneRollingDigit digit={secTens} />
-        <IPhoneRollingDigit digit={secOnes} />
-      </span>
+
+      {/* Minutes with Rolling Digits */}
+      <div className="flex flex-col items-center">
+        <span className="flex items-center text-white">
+          <IPhoneRollingDigit digit={minTens} />
+          <IPhoneRollingDigit digit={minOnes} />
+        </span>
+        {size === "large" && <span className="text-[9px] sm:text-[11px] font-sans tracking-widest text-slate-400 font-bold uppercase mt-1">MINUTES</span>}
+      </div>
+
+      <span className={`text-emerald-400 ${colonClass[size]} animate-pulse`}>:</span>
+
+      {/* Seconds with Rolling Digits */}
+      <div className="flex flex-col items-center">
+        <span className="flex items-center text-emerald-300">
+          <IPhoneRollingDigit digit={secTens} />
+          <IPhoneRollingDigit digit={secOnes} />
+        </span>
+        {size === "large" && <span className="text-[9px] sm:text-[11px] font-sans tracking-widest text-emerald-400 font-bold uppercase mt-1">SECONDS</span>}
+      </div>
     </div>
   );
 }
@@ -4435,7 +4488,11 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
     showToast("Dispatching automated digest briefing...");
     try {
       const res = await api.sendDigest();
-      showToast(`Test digest dispatched to: ${res.recipient} 📬`);
+      if (res && res.delivered) {
+        showToast(`Digest briefing successfully delivered to ${res.recipient}! 📬`);
+      } else {
+        showToast(`Briefing dispatched! (Note: Render Free tier drops outbound SMTP ports 587/465; add RESEND_API_KEY in Render dashboard for HTTPS delivery)`);
+      }
     } catch {
       showToast(`Test digest dispatched to: ${user.email} 📬`);
     }

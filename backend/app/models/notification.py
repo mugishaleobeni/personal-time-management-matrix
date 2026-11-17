@@ -13,3 +13,4 @@ class DigestDispatchResponse(BaseModel):
     tasksDueToday: int
     routinesCompleted: int
     dispatchedAt: str
+    delivered: Optional[bool] = False
