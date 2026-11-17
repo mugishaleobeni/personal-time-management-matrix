@@ -1066,18 +1066,27 @@ export default function App() {
         {/* ======================================================== */}
         <main className="flex-1 flex flex-col w-full md:pl-[84px] lg:pl-[96px] pb-24 md:pb-8 overflow-y-auto min-h-screen">
           
-          {/* Header containing exclusively the mail icon, search icon, and profile avatar */}
+          {/* Fixed Glassmorphic Top Navbar on Mobile, Sticky on Desktop */}
           <header 
             style={{
-              backgroundColor: 'rgba(16, 28, 20, 0.75)',
-              backdropFilter: 'blur(12px) saturate(140%)',
-              WebkitBackdropFilter: 'blur(12px) saturate(140%)',
-              borderBottom: '1px solid rgba(52, 211, 153, 0.15)'
+              backgroundColor: 'rgba(14, 28, 20, 0.88)',
+              backdropFilter: 'blur(16px) saturate(150%)',
+              WebkitBackdropFilter: 'blur(16px) saturate(150%)',
+              borderBottom: '1px solid rgba(52, 211, 153, 0.2)',
+              boxShadow: '0 4px 25px rgba(0,0,0,0.4)'
             }}
-            className="sticky top-0 z-30 px-4 sm:px-6 md:px-10 h-14 sm:h-16 md:h-[68px] flex items-center justify-end select-none"
+            className="fixed top-0 left-0 right-0 md:sticky md:top-0 z-30 px-3.5 sm:px-6 md:px-10 h-14 sm:h-16 md:h-[68px] flex items-center justify-between md:justify-end select-none"
           >
+            {/* Mobile Branding on the left */}
+            <div className="flex md:hidden items-center gap-2">
+              <span className="text-xs sm:text-sm font-black tracking-tight text-white flex items-center gap-1.5 truncate">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
+                MASTER YOUR TIME
+              </span>
+            </div>
+
             {/* Action Icons: Live Real-Time Clock, Mail, Search & Circular Profile Avatar */}
-            <div className="flex items-center gap-3 sm:gap-4 md:gap-6">
+            <div className="flex items-center gap-2 sm:gap-4 md:gap-6">
               {/* Live Real-Time System Clock Pill */}
               <div 
                 onClick={() => showToast(`Live System Clock: ${currentTime.toLocaleTimeString()} (${user.timezone || 'CAT'})`)}
@@ -1189,7 +1198,7 @@ export default function App() {
           </header>
 
           {/* Module Content Switcher */}
-          <div className="p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8 flex-1 w-full max-w-7xl mx-auto">
+          <div className="p-4 sm:p-6 md:p-8 pt-16 sm:pt-20 md:pt-8 space-y-6 sm:space-y-8 flex-1 w-full max-w-7xl mx-auto">
             {activeTab === 'dashboard' && (
               <DashboardView 
                 user={user}
@@ -5727,8 +5736,8 @@ function LandingAuthPage({
         <div className="absolute top-1/2 left-1/3 w-[450px] h-[450px] rounded-full blur-[100px] bg-emerald-500/10" />
       </div>
 
-      {/* Top Navbar */}
-      <header className="relative z-20 w-full px-6 sm:px-10 h-16 sm:h-20 flex items-center justify-between border-b border-emerald-500/15 backdrop-blur-md bg-black/20">
+      {/* Fixed Top Navbar */}
+      <header className="fixed top-0 left-0 right-0 z-30 w-full px-4 sm:px-10 h-16 sm:h-20 flex items-center justify-between border-b border-emerald-500/15 backdrop-blur-md bg-[#08130e]/85 shadow-lg select-none">
         <div>
           <div className="flex items-center gap-2">
             <span className="text-base sm:text-lg font-black tracking-tight text-white">MASTER YOUR TIME</span>
@@ -5774,7 +5783,7 @@ function LandingAuthPage({
       </header>
 
       {/* Main Landing & Auth Gateway Grid */}
-      <main className="relative z-10 flex-1 w-full max-w-7xl mx-auto px-4 sm:px-8 py-8 sm:py-12 flex flex-col lg:flex-row items-center justify-between gap-10 lg:gap-14">
+      <main className="relative z-10 flex-1 w-full max-w-7xl mx-auto px-4 sm:px-8 pt-20 sm:pt-28 py-8 sm:py-12 flex flex-col lg:flex-row items-center justify-between gap-10 lg:gap-14">
         {/* Left Presentation & Architecture Column */}
         <div className="w-full lg:w-7/12 space-y-6 sm:space-y-8 text-center lg:text-left">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold">
