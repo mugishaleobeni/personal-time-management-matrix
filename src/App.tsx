@@ -4754,9 +4754,14 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
   const [enableAlerts, setEnableAlerts] = useState(user.emailDigest ?? true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [gatewayStatus, setGatewayStatus] = useState<any>({ hasBrevo: false, hasResend: false, activeProvider: 'brevo' });
+  const [gatewayTab, setGatewayTab] = useState<'https' | 'smtp'>('smtp');
   const [brevoKeyInput, setBrevoKeyInput] = useState('');
   const [brevoSenderEmail, setBrevoSenderEmail] = useState(user.email || 'engineerleobeni@gmail.com');
   const [brevoSenderName, setBrevoSenderName] = useState('Master Your Time');
+  const [smtpHostInput, setSmtpHostInput] = useState('smtp-relay.brevo.com');
+  const [smtpPortInput, setSmtpPortInput] = useState<number>(587);
+  const [smtpUserInput, setSmtpUserInput] = useState('c3eedc001@smtp-brevo.com');
+  const [smtpPasswordInput, setSmtpPasswordInput] = useState('');
   const [savingGateway, setSavingGateway] = useState(false);
 
   useEffect(() => {
@@ -4777,6 +4782,9 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
         }
         if (gw.brevoSenderEmail) setBrevoSenderEmail(gw.brevoSenderEmail);
         if (gw.brevoSenderName) setBrevoSenderName(gw.brevoSenderName);
+        if (gw.smtpHost) setSmtpHostInput(gw.smtpHost);
+        if (gw.smtpPort) setSmtpPortInput(Number(gw.smtpPort));
+        if (gw.smtpUser) setSmtpUserInput(gw.smtpUser);
       }
     }).catch(() => {});
 
@@ -4806,10 +4814,6 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
   };
 
   const handleSaveGateway = async () => {
-    if (!brevoKeyInput.trim() && !gatewayStatus.hasBrevo) {
-      showToast("Please enter a valid Brevo API key.");
-      return;
-    }
     setSavingGateway(true);
     try {
       const payload: any = {
@@ -4820,10 +4824,16 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
       }
       if (brevoSenderEmail.trim()) payload.brevoSenderEmail = brevoSenderEmail.trim();
       if (brevoSenderName.trim()) payload.brevoSenderName = brevoSenderName.trim();
+      if (smtpHostInput.trim()) payload.smtpHost = smtpHostInput.trim();
+      if (smtpPortInput) payload.smtpPort = Number(smtpPortInput);
+      if (smtpUserInput.trim()) payload.smtpUser = smtpUserInput.trim();
+      if (smtpPasswordInput.trim() && !smtpPasswordInput.includes('...')) {
+        payload.smtpPassword = smtpPasswordInput.trim();
+      }
 
       await api.saveEmailGateway(payload);
-      setGatewayStatus((prev: any) => ({ ...prev, hasBrevo: true, activeProvider: 'brevo' }));
-      showToast("Brevo Cloud Gateway configured and saved to MongoDB Atlas! 🚀");
+      setGatewayStatus((prev: any) => ({ ...prev, hasBrevo: true, activeProvider: 'brevo', smtpPort: smtpPortInput }));
+      showToast(`Brevo Gateway saved! Port: ${smtpPortInput} (saved to Atlas database) 🚀`);
     } catch {
       showToast("Could not save Brevo gateway settings.");
     } finally {
@@ -4839,7 +4849,7 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
         const providerLabel = (res.provider || 'Brevo').toUpperCase();
         showToast(`Digest briefing successfully delivered via ${providerLabel} to ${res.recipient}! 📬`);
       } else {
-        showToast(`Briefing dispatched to ${user.email}! (Add your Brevo API key below for instant HTTPS delivery) 📬`);
+        showToast(`Briefing dispatched to ${user.email}! (If timed out on Render, switch port to 2525 or use HTTPS API) 📬`);
       }
     } catch {
       showToast(`Test digest dispatched to: ${user.email} 📬`);
@@ -4850,10 +4860,10 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
     <div className="max-w-3xl mx-auto space-y-6 animate-fadeIn">
       <div>
         <h2 className="text-2xl font-black text-white drop-shadow">Automated Intelligence Reports</h2>
-        <p className="text-xs text-slate-300 mt-1">Configure automated morning briefs, deadline reminders, and Brevo email delivery</p>
+        <p className="text-xs text-slate-300 mt-1">Configure automated morning briefs, deadline reminders, and Brevo delivery</p>
       </div>
 
-      {/* Brevo Cloud HTTPS Gateway Card */}
+      {/* Brevo Cloud Gateway & Custom Port Settings Card */}
       <div 
         style={{
           background: 'rgba(14, 28, 20, 0.75)',
@@ -4861,68 +4871,155 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
           border: '1px solid rgba(52, 211, 153, 0.25)',
           boxShadow: '0 20px 45px rgba(0,0,0,0.35)'
         }}
-        className="p-6 sm:p-8 rounded-3xl space-y-4"
+        className="p-6 sm:p-8 rounded-3xl space-y-5"
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
           <div>
             <h3 className="text-base font-bold text-white flex items-center gap-2">
               <Mail className="w-4 h-4 text-emerald-400" />
-              Brevo Cloud Email Gateway (Port 443 HTTPS)
+              Brevo Gateway & Port Navigation
             </h3>
-            <p className="text-xs text-slate-300 mt-0.5">High-reliability delivery bypassing SMTP port blocks on Render and cloud hosts</p>
+            <p className="text-xs text-slate-300 mt-0.5">Configure Brevo SMTP (Port 587, 2525, 465) or HTTPS REST API (Port 443)</p>
           </div>
-          <div>
-            {gatewayStatus.hasBrevo ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/35">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Brevo HTTPS Active
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/35">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Brevo Setup Available
-              </span>
-            )}
-          </div>
-        </div>
-
-        <p className="text-xs text-slate-300 leading-relaxed">
-          <strong className="text-emerald-300">Brevo (formerly Sendinblue)</strong> provides 300 free transactional emails every day (9,000/month). Dispatches operate over HTTPS port 443, ensuring 100% deliverability without triggering firewall drops.
-        </p>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-          <div>
-            <label className="block text-xs font-semibold text-slate-200 mb-1">Brevo API Key (v3)</label>
-            <input 
-              type="password"
-              placeholder="xkeysib-..."
-              value={brevoKeyInput}
-              onChange={(e) => setBrevoKeyInput(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-200 mb-1">Brevo Verified Sender Email</label>
-            <input 
-              type="email"
-              placeholder="e.g. your-email@gmail.com"
-              value={brevoSenderEmail}
-              onChange={(e) => setBrevoSenderEmail(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
-            />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setGatewayTab('smtp')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                gatewayTab === 'smtp' 
+                  ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30' 
+                  : 'bg-white/5 text-slate-300 hover:bg-white/10'
+              }`}
+            >
+              SMTP Relay (Ports)
+            </button>
+            <button
+              onClick={() => setGatewayTab('https')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                gatewayTab === 'https' 
+                  ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30' 
+                  : 'bg-white/5 text-slate-300 hover:bg-white/10'
+              }`}
+            >
+              HTTPS API (Port 443)
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2">
+        {gatewayTab === 'smtp' ? (
+          <div className="space-y-4">
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Brevo SMTP Relay supports multiple ports. If port <strong className="text-emerald-300">587</strong> times out on Render or cloud firewalls, select port <strong className="text-emerald-300">2525</strong> (alternative TLS) or <strong className="text-emerald-300">465</strong> (SSL):
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-200 mb-1">SMTP Server</label>
+                <input 
+                  type="text"
+                  value={smtpHostInput}
+                  onChange={(e) => setSmtpHostInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-200 mb-1">Port (Change Port)</label>
+                <div className="flex items-center gap-1.5">
+                  {[587, 2525, 465].map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setSmtpPortInput(p)}
+                      className={`flex-1 py-2 rounded-xl text-xs font-mono font-bold transition ${
+                        smtpPortInput === p
+                          ? 'bg-emerald-500 text-white border border-emerald-400 shadow-md'
+                          : 'bg-[#0c1a12] text-slate-300 border border-emerald-500/30 hover:border-emerald-500/60'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-200 mb-1">Custom Port Number</label>
+                <input 
+                  type="number"
+                  value={smtpPortInput}
+                  onChange={(e) => setSmtpPortInput(Number(e.target.value))}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-200 mb-1">Login / SMTP User</label>
+                <input 
+                  type="text"
+                  value={smtpUserInput}
+                  onChange={(e) => setSmtpUserInput(e.target.value)}
+                  placeholder="c3eedc001@smtp-brevo.com"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-200 mb-1">SMTP Key / Password (xsmtpsib-...)</label>
+                <input 
+                  type="password"
+                  placeholder="xsmtpsib-..."
+                  value={smtpPasswordInput}
+                  onChange={(e) => setSmtpPasswordInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-xs text-slate-300 leading-relaxed">
+              In Brevo navigation, click <strong className="text-emerald-300">SMTP & API</strong> → <strong className="text-emerald-300">API Keys</strong> tab (next to SMTP) → generate a key starting with <code className="text-emerald-400">xkeysib-...</code>. Dispatches operate over HTTPS Port 443 with 300 free emails/day.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-200 mb-1">Brevo API Key (v3 - Port 443)</label>
+                <input 
+                  type="password"
+                  placeholder="xkeysib-..."
+                  value={brevoKeyInput}
+                  onChange={(e) => setBrevoKeyInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-200 mb-1">Verified Sender Email</label>
+                <input 
+                  type="email"
+                  placeholder="e.g. mugishaleobeni0@gmail.com"
+                  value={brevoSenderEmail}
+                  onChange={(e) => setBrevoSenderEmail(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2 border-t border-white/10">
           <p className="text-[11px] text-slate-400">
-            Keys are securely persisted in MongoDB Atlas (<code className="text-emerald-400">chronos_db.system_settings</code>).
+            Active Port: <span className="font-mono text-emerald-400 font-bold">{smtpPortInput}</span> • Server: <span className="font-mono text-slate-300">{smtpHostInput}</span>
           </p>
           <button
             onClick={handleSaveGateway}
-            disabled={savingGateway || (!brevoKeyInput.trim() && !gatewayStatus.hasBrevo)}
+            disabled={savingGateway}
             className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-xs font-bold transition shadow-lg shadow-emerald-500/25 active:scale-95 shrink-0 flex items-center gap-2"
           >
             <Check className="w-3.5 h-3.5" />
-            {savingGateway ? "Saving..." : "Save Brevo Gateway"}
+            {savingGateway ? "Saving..." : "Save Port & Gateway Settings"}
           </button>
         </div>
       </div>

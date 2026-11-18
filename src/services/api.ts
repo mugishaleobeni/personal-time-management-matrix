@@ -336,6 +336,10 @@ class ApiService {
     brevoSenderName?: string;
     resendApiKey?: string;
     preferredProvider?: string;
+    smtpHost?: string;
+    smtpPort?: number;
+    smtpUser?: string;
+    smtpPassword?: string;
   }): Promise<any> {
     return this.request<any>('/notifications/gateway', {
       method: 'POST',

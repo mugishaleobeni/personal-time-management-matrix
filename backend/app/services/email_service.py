@@ -9,51 +9,72 @@ from app.config import settings
 
 logger = logging.getLogger("chronos.email")
 
-def _send_smtp_sync(to_email: str, subject: str, text_content: str, html_content: Optional[str] = None) -> bool:
-    """Synchronous SMTP mail delivery using configured credentials (Gmail / SMTP)."""
-    user = settings.SMTP_USER.strip()
-    pwd = settings.email_password.strip()
+def _send_smtp_sync(
+    to_email: str,
+    subject: str,
+    text_content: str,
+    html_content: Optional[str] = None,
+    host: Optional[str] = None,
+    port: Optional[int] = None,
+    user: Optional[str] = None,
+    pwd: Optional[str] = None,
+    from_addr: Optional[str] = None,
+    from_name: Optional[str] = None
+) -> bool:
+    """Synchronous SMTP mail delivery with multi-port fallback (supports 587, 2525, 465)."""
+    smtp_host = (host or settings.SMTP_HOST).strip()
+    try:
+        smtp_port = int(port or settings.SMTP_PORT)
+    except (ValueError, TypeError):
+        smtp_port = 587
+    smtp_user = (user or settings.SMTP_USER).strip()
+    smtp_pwd = (pwd or settings.email_password).strip()
+    smtp_from = (from_addr or settings.SMTP_FROM_EMAIL.strip() or smtp_user).strip()
+    smtp_name = (from_name or settings.SMTP_FROM_NAME).strip()
     
-    if not user or not pwd:
+    if not smtp_user or not smtp_pwd:
         logger.warning("SMTP credentials not configured. Email skipped.")
         return False
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    from_addr = settings.SMTP_FROM_EMAIL.strip() or user
-    msg["From"] = f"{settings.SMTP_FROM_NAME} <{from_addr}>"
+    msg["From"] = f"{smtp_name} <{smtp_from}>"
     msg["To"] = to_email
 
     msg.attach(MIMEText(text_content, "plain", "utf-8"))
     if html_content:
         msg.attach(MIMEText(html_content, "html", "utf-8"))
 
-    try:
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=3) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(user, pwd)
-            server.sendmail(from_addr, [to_email], msg.as_string())
-        logger.info(f"Successfully delivered email '{subject}' to {to_email}")
-        return True
-    except Exception as e_starttls:
-        logger.warning(f"SMTP STARTTLS delivery to {to_email} encountered issue: {e_starttls}. Attempting SSL (Port 465) fallback...")
+    # Multi-port cascade: try configured port first, then alternative ports (e.g. Brevo 2525 & 465)
+    candidate_ports = [smtp_port]
+    if "brevo" in smtp_host.lower():
+        for alt_port in [2525, 465, 587]:
+            if alt_port not in candidate_ports:
+                candidate_ports.append(alt_port)
+    elif 465 not in candidate_ports:
+        candidate_ports.append(465)
+
+    for current_port in candidate_ports:
         try:
-            with smtplib.SMTP_SSL(settings.SMTP_HOST, 465, timeout=3) as ssl_server:
-                ssl_server.login(user, pwd)
-                ssl_server.sendmail(from_addr, [to_email], msg.as_string())
-            logger.info(f"Successfully delivered email '{subject}' to {to_email} via SSL")
-            return True
-        except Exception as e_ssl:
-            if "101" in str(e_ssl) or "Network is unreachable" in str(e_ssl):
-                logger.warning(
-                    f"Notice: Render Free Tier restricts outbound TCP ports 587/465 to prevent spam. "
-                    f"To enable 100% reliable cloud emails, configure RESEND_API_KEY or BREVO_API_KEY (operates over HTTPS port 443)."
-                )
+            if current_port == 465:
+                with smtplib.SMTP_SSL(smtp_host, 465, timeout=4) as ssl_server:
+                    ssl_server.login(smtp_user, smtp_pwd)
+                    ssl_server.sendmail(smtp_from, [to_email], msg.as_string())
+                logger.info(f"Successfully delivered email '{subject}' to {to_email} via {smtp_host}:{current_port} (SSL)")
+                return True
             else:
-                logger.warning(f"SMTP SSL delivery to {to_email} also failed: {e_ssl}")
-            return False
+                with smtplib.SMTP(smtp_host, current_port, timeout=4) as server:
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
+                    server.login(smtp_user, smtp_pwd)
+                    server.sendmail(smtp_from, [to_email], msg.as_string())
+                logger.info(f"Successfully delivered email '{subject}' to {to_email} via {smtp_host}:{current_port} (STARTTLS)")
+                return True
+        except Exception as e_port:
+            logger.warning(f"SMTP delivery via {smtp_host}:{current_port} encountered issue: {e_port}")
+
+    return False
 
 async def send_email_with_provider(
     to_email: str,
@@ -68,6 +89,7 @@ async def send_email_with_provider(
     resend_key = settings.RESEND_API_KEY.strip()
 
     # Dynamic lookup: Check if user configured an email gateway in MongoDB Atlas
+    gw_doc = None
     try:
         from app.repository import get_col
         gw_doc = await get_col("system_settings").find_one({"_id": "email_gateway"})
@@ -151,11 +173,30 @@ async def send_email_with_provider(
             logger.warning(f"Resend HTTPS error: {e_resend}")
 
     # =========================================================================
-    # 3. DIRECT SMTP RELAY (Brevo SMTP or Gmail SMTP)
+    # 3. DIRECT SMTP RELAY (Brevo SMTP or Gmail SMTP with multi-port fallback)
     # =========================================================================
-    smtp_success = await asyncio.to_thread(_send_smtp_sync, to_email, subject, text_content, html_content)
+    smtp_host = (gw_doc.get("smtpHost") if gw_doc else "") or settings.SMTP_HOST
+    smtp_port = (gw_doc.get("smtpPort") if gw_doc else "") or settings.SMTP_PORT
+    smtp_user = (gw_doc.get("smtpUser") if gw_doc else "") or settings.SMTP_USER
+    smtp_pwd = (gw_doc.get("smtpPassword") if gw_doc else "") or settings.email_password
+    smtp_from = (gw_doc.get("smtpFromEmail") if gw_doc else "") or settings.SMTP_FROM_EMAIL
+    smtp_name = (gw_doc.get("smtpFromName") if gw_doc else "") or settings.SMTP_FROM_NAME
+
+    smtp_success = await asyncio.to_thread(
+        _send_smtp_sync,
+        to_email,
+        subject,
+        text_content,
+        html_content,
+        smtp_host,
+        smtp_port,
+        smtp_user,
+        smtp_pwd,
+        smtp_from,
+        smtp_name
+    )
     if smtp_success:
-        provider_name = "brevo_smtp" if "brevo" in settings.SMTP_HOST.lower() else "smtp"
+        provider_name = "brevo_smtp" if "brevo" in smtp_host.lower() else "smtp"
         return True, provider_name
 
     return False, "failed"

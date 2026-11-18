@@ -59,6 +59,10 @@ async def get_email_gateway(current_user: dict = Depends(get_current_user)):
     
     active_provider = "brevo" if has_brevo else ("resend" if has_resend else "smtp")
 
+    smtp_host = gw_doc.get("smtpHost") or settings.SMTP_HOST
+    smtp_port = gw_doc.get("smtpPort") or settings.SMTP_PORT
+    smtp_user = gw_doc.get("smtpUser") or settings.SMTP_USER
+
     return {
         "hasBrevo": has_brevo,
         "hasResend": has_resend,
@@ -67,6 +71,10 @@ async def get_email_gateway(current_user: dict = Depends(get_current_user)):
         "brevoSenderEmail": brevo_sender_email,
         "brevoSenderName": brevo_sender_name,
         "resendApiKeyMasked": f"re_...{gw_doc.get('resendApiKey', '')[-4:]}" if gw_doc.get("resendApiKey") else ("configured via env" if settings.RESEND_API_KEY else ""),
+        "smtpHost": smtp_host,
+        "smtpPort": smtp_port,
+        "smtpUser": smtp_user,
+        "smtpPasswordMasked": f"...{gw_doc.get('smtpPassword', '')[-4:]}" if gw_doc.get("smtpPassword") else ("configured" if settings.SMTP_PASSWORD else ""),
     }
 
 @router.post("/gateway")
@@ -89,6 +97,17 @@ async def save_email_gateway(payload: dict, current_user: dict = Depends(get_cur
         update_doc["brevoSenderName"] = brevo_sender_name
     if resend_key:
         update_doc["resendApiKey"] = resend_key
+    if "smtpHost" in payload and payload["smtpHost"].strip():
+        update_doc["smtpHost"] = payload["smtpHost"].strip()
+    if "smtpPort" in payload:
+        try:
+            update_doc["smtpPort"] = int(payload["smtpPort"])
+        except (ValueError, TypeError):
+            pass
+    if "smtpUser" in payload and payload["smtpUser"].strip():
+        update_doc["smtpUser"] = payload["smtpUser"].strip()
+    if "smtpPassword" in payload and payload["smtpPassword"].strip():
+        update_doc["smtpPassword"] = payload["smtpPassword"].strip()
 
     await get_col("system_settings").update_one(
         {"_id": "email_gateway"},
