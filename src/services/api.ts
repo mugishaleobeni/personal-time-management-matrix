@@ -330,7 +330,13 @@ class ApiService {
     return this.request<any>('/notifications/gateway');
   }
 
-  async saveEmailGateway(payload: { resendApiKey?: string; brevoApiKey?: string }): Promise<any> {
+  async saveEmailGateway(payload: {
+    brevoApiKey?: string;
+    brevoSenderEmail?: string;
+    brevoSenderName?: string;
+    resendApiKey?: string;
+    preferredProvider?: string;
+  }): Promise<any> {
     return this.request<any>('/notifications/gateway', {
       method: 'POST',
       body: JSON.stringify(payload),

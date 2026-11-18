@@ -21,3 +21,9 @@ services:
         sync: false
       - key: SMTP_FROM_NAME
         value: Chronos OS
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        value: Master Your Time

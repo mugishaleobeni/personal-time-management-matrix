@@ -4753,8 +4753,10 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
   const [frequency, setFrequency] = useState(user.reportFrequency || 'daily');
   const [enableAlerts, setEnableAlerts] = useState(user.emailDigest ?? true);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [gatewayStatus, setGatewayStatus] = useState<any>({ hasResend: false, hasBrevo: false });
-  const [resendKeyInput, setResendKeyInput] = useState('');
+  const [gatewayStatus, setGatewayStatus] = useState<any>({ hasBrevo: false, hasResend: false, activeProvider: 'brevo' });
+  const [brevoKeyInput, setBrevoKeyInput] = useState('');
+  const [brevoSenderEmail, setBrevoSenderEmail] = useState(user.email || 'engineerleobeni@gmail.com');
+  const [brevoSenderName, setBrevoSenderName] = useState('Master Your Time');
   const [savingGateway, setSavingGateway] = useState(false);
 
   useEffect(() => {
@@ -4770,9 +4772,11 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
     api.getEmailGateway().then(gw => {
       if (isMounted && gw) {
         setGatewayStatus(gw);
-        if (gw.resendApiKeyMasked && gw.resendApiKeyMasked !== 'configured') {
-          setResendKeyInput(gw.resendApiKeyMasked);
+        if (gw.brevoApiKeyMasked && !gw.brevoApiKeyMasked.includes('configured')) {
+          setBrevoKeyInput(gw.brevoApiKeyMasked);
         }
+        if (gw.brevoSenderEmail) setBrevoSenderEmail(gw.brevoSenderEmail);
+        if (gw.brevoSenderName) setBrevoSenderName(gw.brevoSenderName);
       }
     }).catch(() => {});
 
@@ -4802,27 +4806,40 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
   };
 
   const handleSaveGateway = async () => {
-    if (!resendKeyInput.trim()) return;
+    if (!brevoKeyInput.trim() && !gatewayStatus.hasBrevo) {
+      showToast("Please enter a valid Brevo API key.");
+      return;
+    }
     setSavingGateway(true);
     try {
-      await api.saveEmailGateway({ resendApiKey: resendKeyInput.trim() });
-      setGatewayStatus((prev: any) => ({ ...prev, hasResend: true }));
-      showToast("Email API Key saved directly to MongoDB! Instant HTTPS email active 🚀");
+      const payload: any = {
+        preferredProvider: 'brevo'
+      };
+      if (brevoKeyInput.trim() && !brevoKeyInput.includes('...')) {
+        payload.brevoApiKey = brevoKeyInput.trim();
+      }
+      if (brevoSenderEmail.trim()) payload.brevoSenderEmail = brevoSenderEmail.trim();
+      if (brevoSenderName.trim()) payload.brevoSenderName = brevoSenderName.trim();
+
+      await api.saveEmailGateway(payload);
+      setGatewayStatus((prev: any) => ({ ...prev, hasBrevo: true, activeProvider: 'brevo' }));
+      showToast("Brevo Cloud Gateway configured and saved to MongoDB Atlas! 🚀");
     } catch {
-      showToast("Could not save email gateway.");
+      showToast("Could not save Brevo gateway settings.");
     } finally {
       setSavingGateway(false);
     }
   };
 
   const sendTestEmail = async () => {
-    showToast("Dispatching automated digest briefing...");
+    showToast("Dispatching automated digest briefing via Brevo...");
     try {
       const res = await api.sendDigest();
       if (res && res.delivered) {
-        showToast(`Digest briefing successfully delivered to ${res.recipient}! 📬`);
+        const providerLabel = (res.provider || 'Brevo').toUpperCase();
+        showToast(`Digest briefing successfully delivered via ${providerLabel} to ${res.recipient}! 📬`);
       } else {
-        showToast(`Briefing dispatched to ${user.email}! 📬`);
+        showToast(`Briefing dispatched to ${user.email}! (Add your Brevo API key below for instant HTTPS delivery) 📬`);
       }
     } catch {
       showToast(`Test digest dispatched to: ${user.email} 📬`);
@@ -4833,9 +4850,84 @@ function NotificationsEmailView({ user, setUser, tasks, routines, showToast, the
     <div className="max-w-3xl mx-auto space-y-6 animate-fadeIn">
       <div>
         <h2 className="text-2xl font-black text-white drop-shadow">Automated Intelligence Reports</h2>
-        <p className="text-xs text-slate-300 mt-1">Configure automated morning briefs, deadline reminders, and weekly recaps</p>
+        <p className="text-xs text-slate-300 mt-1">Configure automated morning briefs, deadline reminders, and Brevo email delivery</p>
       </div>
 
+      {/* Brevo Cloud HTTPS Gateway Card */}
+      <div 
+        style={{
+          background: 'rgba(14, 28, 20, 0.75)',
+          backdropFilter: 'blur(24px) saturate(160%)',
+          border: '1px solid rgba(52, 211, 153, 0.25)',
+          boxShadow: '0 20px 45px rgba(0,0,0,0.35)'
+        }}
+        className="p-6 sm:p-8 rounded-3xl space-y-4"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+          <div>
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <Mail className="w-4 h-4 text-emerald-400" />
+              Brevo Cloud Email Gateway (Port 443 HTTPS)
+            </h3>
+            <p className="text-xs text-slate-300 mt-0.5">High-reliability delivery bypassing SMTP port blocks on Render and cloud hosts</p>
+          </div>
+          <div>
+            {gatewayStatus.hasBrevo ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/35">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Brevo HTTPS Active
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/35">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Brevo Setup Available
+              </span>
+            )}
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-300 leading-relaxed">
+          <strong className="text-emerald-300">Brevo (formerly Sendinblue)</strong> provides 300 free transactional emails every day (9,000/month). Dispatches operate over HTTPS port 443, ensuring 100% deliverability without triggering firewall drops.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+          <div>
+            <label className="block text-xs font-semibold text-slate-200 mb-1">Brevo API Key (v3)</label>
+            <input 
+              type="password"
+              placeholder="xkeysib-..."
+              value={brevoKeyInput}
+              onChange={(e) => setBrevoKeyInput(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-200 mb-1">Brevo Verified Sender Email</label>
+            <input 
+              type="email"
+              placeholder="e.g. your-email@gmail.com"
+              value={brevoSenderEmail}
+              onChange={(e) => setBrevoSenderEmail(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl bg-[#0c1a12] border border-emerald-500/30 text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500/50 shadow-inner"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2">
+          <p className="text-[11px] text-slate-400">
+            Keys are securely persisted in MongoDB Atlas (<code className="text-emerald-400">chronos_db.system_settings</code>).
+          </p>
+          <button
+            onClick={handleSaveGateway}
+            disabled={savingGateway || (!brevoKeyInput.trim() && !gatewayStatus.hasBrevo)}
+            className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-xs font-bold transition shadow-lg shadow-emerald-500/25 active:scale-95 shrink-0 flex items-center gap-2"
+          >
+            <Check className="w-3.5 h-3.5" />
+            {savingGateway ? "Saving..." : "Save Brevo Gateway"}
+          </button>
+        </div>
+      </div>
+
+      {/* Scheduled Productivity Digest Settings Card */}
       <div 
         style={{
           background: 'rgba(14, 28, 20, 0.65)',

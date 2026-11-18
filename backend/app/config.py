@@ -36,9 +36,16 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = Field(default="lygz ltwu itmf mrtz")
     SMTP_FROM_EMAIL: str = Field(default="engineerleobeni@gmail.com")
     SMTP_FROM_NAME: str = Field(default="Master Your Time")
-    RESEND_API_KEY: str = Field(default="", description="Resend HTTPS API key for cloud email delivery over port 443")
+    
+    # Brevo (Sendinblue) HTTPS API (Port 443) - Primary Cloud Provider
     BREVO_API_KEY: str = Field(default="", description="Brevo HTTPS API key for cloud email delivery over port 443")
+    BREVO_SENDER_EMAIL: str = Field(default="engineerleobeni@gmail.com", description="Verified sender email address registered with Brevo")
+    BREVO_SENDER_NAME: str = Field(default="Master Your Time", description="Display name for Brevo email dispatches")
+    
+    # Resend & Fallback Gateways
+    RESEND_API_KEY: str = Field(default="", description="Resend HTTPS API key for cloud email delivery over port 443")
     SENDGRID_API_KEY: str = Field(default="", description="SendGrid HTTPS API key for cloud email delivery over port 443")
+    EMAIL_PROVIDER: str = Field(default="brevo", description="Default provider: brevo, resend, or smtp")
 
     # Cloudinary Image Storage
     CLOUDINARY_CLOUD_NAME: str = Field(default="master-your-time", description="Cloudinary cloud name")

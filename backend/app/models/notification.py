@@ -14,3 +14,4 @@ class DigestDispatchResponse(BaseModel):
     routinesCompleted: int
     dispatchedAt: str
     delivered: Optional[bool] = False
+    provider: Optional[str] = "brevo"

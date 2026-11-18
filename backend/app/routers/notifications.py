@@ -42,23 +42,61 @@ async def trigger_digest_dispatch(current_user: dict = Depends(get_current_user)
 async def get_email_gateway(current_user: dict = Depends(get_current_user)):
     from app.config import settings
     gw_doc = await get_col("system_settings").find_one({"_id": "email_gateway"}) or {}
-    has_resend = bool(settings.RESEND_API_KEY.strip() or gw_doc.get("resendApiKey"))
     has_brevo = bool(settings.BREVO_API_KEY.strip() or gw_doc.get("brevoApiKey"))
+    has_resend = bool(settings.RESEND_API_KEY.strip() or gw_doc.get("resendApiKey"))
+    
+    brevo_sender_email = (
+        gw_doc.get("brevoSenderEmail") or
+        settings.BREVO_SENDER_EMAIL or
+        settings.SMTP_FROM_EMAIL or
+        settings.SMTP_USER
+    )
+    brevo_sender_name = (
+        gw_doc.get("brevoSenderName") or
+        settings.BREVO_SENDER_NAME or
+        settings.SMTP_FROM_NAME
+    )
+    
+    active_provider = "brevo" if has_brevo else ("resend" if has_resend else "smtp")
+
     return {
-        "hasResend": has_resend,
         "hasBrevo": has_brevo,
-        "resendApiKeyMasked": f"re_...{gw_doc.get('resendApiKey', '')[-4:]}" if gw_doc.get("resendApiKey") else ("configured" if settings.RESEND_API_KEY else ""),
-        "brevoApiKeyMasked": f"...{gw_doc.get('brevoApiKey', '')[-4:]}" if gw_doc.get("brevoApiKey") else ("configured" if settings.BREVO_API_KEY else ""),
+        "hasResend": has_resend,
+        "activeProvider": active_provider,
+        "brevoApiKeyMasked": f"xkeysib-...{gw_doc.get('brevoApiKey', '')[-4:]}" if gw_doc.get("brevoApiKey") else ("configured via env" if settings.BREVO_API_KEY else ""),
+        "brevoSenderEmail": brevo_sender_email,
+        "brevoSenderName": brevo_sender_name,
+        "resendApiKeyMasked": f"re_...{gw_doc.get('resendApiKey', '')[-4:]}" if gw_doc.get("resendApiKey") else ("configured via env" if settings.RESEND_API_KEY else ""),
     }
 
 @router.post("/gateway")
 async def save_email_gateway(payload: dict, current_user: dict = Depends(get_current_user)):
-    resend_key = payload.get("resendApiKey", "").strip()
     brevo_key = payload.get("brevoApiKey", "").strip()
+    brevo_sender_email = payload.get("brevoSenderEmail", "").strip()
+    brevo_sender_name = payload.get("brevoSenderName", "").strip()
+    resend_key = payload.get("resendApiKey", "").strip()
+    preferred_provider = payload.get("preferredProvider", "brevo").strip()
     
+    update_doc = {
+        "updatedBy": current_user["_id"],
+        "preferredProvider": preferred_provider
+    }
+    if brevo_key:
+        update_doc["brevoApiKey"] = brevo_key
+    if brevo_sender_email:
+        update_doc["brevoSenderEmail"] = brevo_sender_email
+    if brevo_sender_name:
+        update_doc["brevoSenderName"] = brevo_sender_name
+    if resend_key:
+        update_doc["resendApiKey"] = resend_key
+
     await get_col("system_settings").update_one(
         {"_id": "email_gateway"},
-        {"$set": {"resendApiKey": resend_key, "brevoApiKey": brevo_key, "updatedBy": current_user["_id"]}},
+        {"$set": update_doc},
         upsert=True
     )
-    return {"status": "success", "message": "Email HTTPS API gateway credentials saved to database"}
+    return {
+        "status": "success",
+        "message": "Brevo & Email HTTPS gateway settings saved successfully",
+        "provider": preferred_provider
+    }

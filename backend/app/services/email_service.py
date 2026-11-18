@@ -55,23 +55,75 @@ def _send_smtp_sync(to_email: str, subject: str, text_content: str, html_content
                 logger.warning(f"SMTP SSL delivery to {to_email} also failed: {e_ssl}")
             return False
 
-async def send_email_async(to_email: str, subject: str, text_content: str, html_content: Optional[str] = None) -> bool:
-    """Dispatches email via HTTPS REST API (Resend/Brevo on port 443) or falls back to SMTP."""
-    resend_key = settings.RESEND_API_KEY.strip()
+async def send_email_with_provider(
+    to_email: str,
+    subject: str,
+    text_content: str,
+    html_content: Optional[str] = None
+) -> tuple[bool, str]:
+    """Dispatches email prioritizing Brevo HTTPS REST API (port 443), with fallback to Resend and SMTP."""
     brevo_key = settings.BREVO_API_KEY.strip()
+    brevo_sender_email = settings.BREVO_SENDER_EMAIL.strip() or settings.SMTP_FROM_EMAIL.strip() or settings.SMTP_USER.strip()
+    brevo_sender_name = settings.BREVO_SENDER_NAME.strip() or settings.SMTP_FROM_NAME.strip() or "Master Your Time"
+    resend_key = settings.RESEND_API_KEY.strip()
 
-    # Dynamic lookup: Check if user configured an email gateway in MongoDB
-    if not resend_key and not brevo_key:
+    # Dynamic lookup: Check if user configured an email gateway in MongoDB Atlas
+    try:
+        from app.repository import get_col
+        gw_doc = await get_col("system_settings").find_one({"_id": "email_gateway"})
+        if gw_doc:
+            if gw_doc.get("brevoApiKey"):
+                brevo_key = gw_doc.get("brevoApiKey").strip()
+            if gw_doc.get("brevoSenderEmail"):
+                brevo_sender_email = gw_doc.get("brevoSenderEmail").strip()
+            if gw_doc.get("brevoSenderName"):
+                brevo_sender_name = gw_doc.get("brevoSenderName").strip()
+            if gw_doc.get("resendApiKey"):
+                resend_key = gw_doc.get("resendApiKey").strip()
+    except Exception as e_lookup:
+        logger.debug(f"Could not load email gateway from database: {e_lookup}")
+
+    # Ensure a valid sender email fallback
+    if not brevo_sender_email:
+        brevo_sender_email = "engineerleobeni@gmail.com"
+
+    # =========================================================================
+    # 1. PRIMARY PROVIDER: Brevo (Sendinblue) HTTPS REST API (Port 443)
+    # 300 free emails/day, never blocked by Render, AWS, or ISP firewalls
+    # =========================================================================
+    if brevo_key:
         try:
-            from app.repository import get_col
-            gw_doc = await get_col("system_settings").find_one({"_id": "email_gateway"})
-            if gw_doc:
-                resend_key = (gw_doc.get("resendApiKey") or "").strip()
-                brevo_key = (gw_doc.get("brevoApiKey") or "").strip()
-        except Exception:
-            pass
+            import httpx
+            headers = {
+                "api-key": brevo_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+            payload = {
+                "sender": {
+                    "name": brevo_sender_name,
+                    "email": brevo_sender_email
+                },
+                "to": [{"email": to_email}],
+                "subject": subject,
+                "htmlContent": html_content or text_content,
+                "textContent": text_content
+            }
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.post("https://api.brevo.com/v3/smtp/email", headers=headers, json=payload)
+                if res.status_code in [200, 201, 202]:
+                    resp_data = res.json() if res.content else {}
+                    msg_id = resp_data.get("messageId", "ok")
+                    logger.info(f"Delivered email '{subject}' to {to_email} via Brevo HTTPS API (id: {msg_id})")
+                    return True, "brevo"
+                else:
+                    logger.warning(f"Brevo HTTPS dispatch failed ({res.status_code}): {res.text}")
+        except Exception as e_brevo:
+            logger.warning(f"Brevo HTTPS dispatch encountered error: {e_brevo}")
 
-    # 1. Resend HTTPS API (Port 443, never blocked by Render)
+    # =========================================================================
+    # 2. SECONDARY HTTPS GATEWAY: Resend API (Port 443)
+    # =========================================================================
     if resend_key:
         try:
             import httpx
@@ -92,44 +144,26 @@ async def send_email_async(to_email: str, subject: str, text_content: str, html_
                 )
                 if res.status_code in [200, 201]:
                     logger.info(f"Delivered email '{subject}' to {to_email} via Resend HTTPS API")
-                    return True
+                    return True, "resend"
                 else:
                     logger.warning(f"Resend HTTPS dispatch failed ({res.status_code}): {res.text}")
-        except Exception as e:
-            logger.warning(f"Resend HTTPS error: {e}")
+        except Exception as e_resend:
+            logger.warning(f"Resend HTTPS error: {e_resend}")
 
-    # 2. Brevo (Sendinblue) HTTPS API (Port 443, never blocked by Render)
-    if brevo_key:
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                res = await client.post(
-                    "https://api.brevo.com/v3/smtp/email",
-                    headers={
-                        "api-key": brevo_key,
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "sender": {
-                            "name": settings.SMTP_FROM_NAME,
-                            "email": settings.SMTP_FROM_EMAIL.strip() or "noreply@masteryourtime.io"
-                        },
-                        "to": [{"email": to_email}],
-                        "subject": subject,
-                        "htmlContent": html_content or text_content,
-                        "textContent": text_content
-                    }
-                )
-                if res.status_code in [200, 201]:
-                    logger.info(f"Delivered email '{subject}' to {to_email} via Brevo HTTPS API")
-                    return True
-                else:
-                    logger.warning(f"Brevo HTTPS dispatch failed ({res.status_code}): {res.text}")
-        except Exception as e:
-            logger.warning(f"Brevo HTTPS error: {e}")
+    # =========================================================================
+    # 3. DIRECT SMTP RELAY (Brevo SMTP or Gmail SMTP)
+    # =========================================================================
+    smtp_success = await asyncio.to_thread(_send_smtp_sync, to_email, subject, text_content, html_content)
+    if smtp_success:
+        provider_name = "brevo_smtp" if "brevo" in settings.SMTP_HOST.lower() else "smtp"
+        return True, provider_name
 
-    # 3. Fallback to direct SMTP delivery
-    return await asyncio.to_thread(_send_smtp_sync, to_email, subject, text_content, html_content)
+    return False, "failed"
+
+async def send_email_async(to_email: str, subject: str, text_content: str, html_content: Optional[str] = None) -> bool:
+    """Dispatches email via configured provider and returns boolean success status."""
+    delivered, _ = await send_email_with_provider(to_email, subject, text_content, html_content)
+    return delivered
 
 async def send_password_reset_code(to_email: str, name: str, code: str) -> bool:
     """Dispatches a password reset email with the 6-digit verification code."""
@@ -253,14 +287,15 @@ async def dispatch_digest_email(user: Dict[str, Any], tasks: List[Dict[str, Any]
     </html>
     """
     
-    sent = await send_email_async(recipient, digest["subject"], digest["body"], html_content)
-    logger.info(f"Dispatched automated digest to {recipient} (Sent={sent}): {digest['subject']}")
+    sent, provider = await send_email_with_provider(recipient, digest["subject"], digest["body"], html_content)
+    logger.info(f"Dispatched automated digest to {recipient} via {provider} (Sent={sent}): {digest['subject']}")
     
     return {
         "status": "success",
         "delivered": sent,
+        "provider": provider,
         "recipient": recipient,
-        "digestSummary": f"Dispatched daily intelligence brief ({digest['tasksDue']} pending tasks, {digest['habitsDone']} completed habits) • Delivered={sent}",
+        "digestSummary": f"Dispatched daily intelligence brief ({digest['tasksDue']} pending tasks, {digest['habitsDone']} completed habits) • Delivered via {provider.upper()}={sent}",
         "tasksDueToday": digest["tasksDue"],
         "routinesCompleted": digest["habitsDone"],
         "dispatchedAt": datetime.utcnow().isoformat()
