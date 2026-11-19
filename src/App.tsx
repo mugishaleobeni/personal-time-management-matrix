@@ -4,7 +4,7 @@ import {
   Plus, Trash2, Edit3, Search, Filter, Bookmark, AlertCircle, 
   BarChart3, Settings, User, Mail, Bell, Sun, Moon, ArrowRight, 
   ChevronRight, ChevronDown, Check, Folder, Tag, Download, 
-  Sparkles, Shield, LogOut, Coffee, Timer as TimerIcon,
+  Shield, LogOut, Coffee, Timer as TimerIcon,
   Layers, FileText, CheckSquare, ListTodo, Star, Compass, RefreshCw,
   X, Zap, ExternalLink, Image as ImageIcon, Upload, Save, Eye, BookOpen, Copy, Lock,
   Volume2, Sliders, Smartphone, MoreHorizontal, LayoutGrid
@@ -1426,7 +1426,6 @@ export default function App() {
           }}
           className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-50 flex items-center gap-3 text-white px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl animate-fadeIn max-w-[calc(100vw-32px)] text-xs sm:text-sm"
         >
-          <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 shrink-0" />
           <span className="font-semibold truncate">{toastMessage}</span>
         </div>
       )}
@@ -1623,7 +1622,6 @@ function DashboardView({
         >
           <div className="flex items-center justify-between text-emerald-200/80 text-xs font-semibold">
             <span>Productivity Score</span>
-            <Sparkles className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="mt-3 sm:mt-4 flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-black text-white">{productivityScore}%</span>
@@ -2100,7 +2098,6 @@ function DashboardView({
                   </div>
 
                   <div className="flex items-center gap-1 text-emerald-400 font-extrabold text-xs shrink-0 ml-2">
-                    <Sparkles className="w-3.5 h-3.5" />
                     <span>{routine.streak}d streak</span>
                   </div>
                 </div>
@@ -3718,7 +3715,6 @@ function DailyRoutineView({ routines, setRoutines, toggleRoutine, showToast, the
                   {routine.title}
                 </h4>
                 <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-300">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                   <span className="font-bold">{routine.streak} day streak</span>
                 </div>
               </div>
@@ -4588,7 +4584,6 @@ function CalendarScheduleView({ tasks, routines, showToast, themeMode }) {
                             className="p-2 sm:p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-200 font-semibold shadow-sm flex items-center justify-between cursor-pointer hover:bg-emerald-500/30 transition"
                           >
                             <div className="flex items-center gap-2 truncate pr-2">
-                              <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                               <span className="text-xs font-bold truncate">{r.title}</span>
                               <span className="text-[10px] text-emerald-300/80 font-mono">({r.duration}m habit)</span>
                             </div>
@@ -5719,7 +5714,7 @@ function AuthModal({ isOpen, onClose, authView, setAuthView, user, setUser, setI
         {/* Header Icon & Title */}
         <div className="text-center mb-6">
           <div className="w-12 h-12 rounded-2xl bg-emerald-500 flex items-center justify-center mx-auto mb-3 shadow-lg shadow-emerald-500/30">
-            <Sparkles className="w-6 h-6 text-white" />
+            <Shield className="w-6 h-6 text-white" />
           </div>
           <h3 className="text-xl font-black text-white">
             {authView === 'login' && 'Sign into Master Your Time'}
@@ -6392,7 +6387,6 @@ function LandingAuthPage({
                   onClick={handleFillDemo}
                   className="text-[11px] text-slate-400 hover:text-emerald-300 transition flex items-center justify-center gap-1.5 mx-auto"
                 >
-                  <Sparkles className="w-3 h-3 text-emerald-400" />
                   <span>Click to auto-fill default demo account</span>
                 </button>
               </div>
@@ -6444,7 +6438,6 @@ function LandingAuthPage({
           }}
           className="fixed bottom-6 right-6 z-50 flex items-center gap-3 text-white px-5 py-3 rounded-2xl animate-fadeIn text-xs sm:text-sm"
         >
-          <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
           <span className="font-semibold">{toastMessage}</span>
         </div>
       )}

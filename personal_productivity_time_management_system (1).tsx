@@ -4,7 +4,7 @@ import {
   Plus, Trash2, Edit3, Search, Filter, Bookmark, AlertCircle, 
   BarChart3, Settings, User, Mail, Bell, Sun, Moon, ArrowRight, 
   ChevronRight, ChevronDown, Check, Folder, Tag, Download, 
-  Sparkles, Flame, Shield, LogOut, Coffee, Timer as TimerIcon,
+  Flame, Shield, LogOut, Coffee, Timer as TimerIcon,
   Layers, FileText, CheckSquare, ListTodo, Star, Compass, RefreshCw,
   X, Zap, ExternalLink, Image as ImageIcon, Upload
 } from 'lucide-react';
@@ -955,7 +955,6 @@ export default function App() {
           }}
           className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-50 flex items-center gap-3 text-white px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl animate-fadeIn max-w-[calc(100vw-32px)] text-xs sm:text-sm"
         >
-          <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 shrink-0" />
           <span className="font-semibold truncate">{toastMessage}</span>
         </div>
       )}
@@ -1040,7 +1039,6 @@ function DashboardView({
         >
           <div className="flex items-center justify-between text-emerald-200/80 text-xs font-semibold">
             <span>Productivity Score</span>
-            <Sparkles className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="mt-3 sm:mt-4 flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-black text-white">{productivityScore}%</span>
@@ -2703,7 +2701,7 @@ function AuthModal({ isOpen, onClose, authView, setAuthView, user, setUser, show
       >
         <div className="text-center mb-6">
           <div className="w-12 h-12 rounded-2xl bg-emerald-500 flex items-center justify-center mx-auto mb-3 shadow-lg shadow-emerald-500/30">
-            <Sparkles className="w-6 h-6 text-white" />
+            <Shield className="w-6 h-6 text-white" />
           </div>
           <h3 className="text-xl font-black text-white">
             {authView === 'login' && 'Sign into Chronos'}
