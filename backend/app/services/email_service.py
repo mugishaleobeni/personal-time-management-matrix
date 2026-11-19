@@ -45,10 +45,10 @@ def _send_smtp_sync(
     if html_content:
         msg.attach(MIMEText(html_content, "html", "utf-8"))
 
-    # Multi-port cascade: try configured port first, then alternative ports (e.g. Brevo 2525 & 465)
+    # Multi-port cascade: try configured port first, then alternative ports (e.g. Brevo 587, 2525 & 465)
     candidate_ports = [smtp_port]
     if "brevo" in smtp_host.lower():
-        for alt_port in [2525, 465, 587]:
+        for alt_port in [587, 2525, 465]:
             if alt_port not in candidate_ports:
                 candidate_ports.append(alt_port)
     elif 465 not in candidate_ports:
@@ -57,13 +57,13 @@ def _send_smtp_sync(
     for current_port in candidate_ports:
         try:
             if current_port == 465:
-                with smtplib.SMTP_SSL(smtp_host, 465, timeout=4) as ssl_server:
+                with smtplib.SMTP_SSL(smtp_host, 465, timeout=8) as ssl_server:
                     ssl_server.login(smtp_user, smtp_pwd)
                     ssl_server.sendmail(smtp_from, [to_email], msg.as_string())
                 logger.info(f"Successfully delivered email '{subject}' to {to_email} via {smtp_host}:{current_port} (SSL)")
                 return True
             else:
-                with smtplib.SMTP(smtp_host, current_port, timeout=4) as server:
+                with smtplib.SMTP(smtp_host, current_port, timeout=8) as server:
                     server.ehlo()
                     server.starttls()
                     server.ehlo()
@@ -105,9 +105,13 @@ async def send_email_with_provider(
     except Exception as e_lookup:
         logger.debug(f"Could not load email gateway from database: {e_lookup}")
 
+    # Fallback to Brevo password key if it looks like an API key
+    if not brevo_key and (settings.SMTP_PASSWORD.startswith("xkeysib-") or settings.SMTP_PASSWORD.startswith("xsmtpsib-")):
+        brevo_key = settings.SMTP_PASSWORD.strip()
+
     # Ensure a valid sender email fallback
     if not brevo_sender_email:
-        brevo_sender_email = "engineerleobeni@gmail.com"
+        brevo_sender_email = settings.BREVO_SENDER_EMAIL.strip() or settings.SMTP_FROM_EMAIL.strip() or "mugishaleobeni0@gmail.com"
 
     # =========================================================================
     # 1. PRIMARY PROVIDER: Brevo (Sendinblue) HTTPS REST API (Port 443)

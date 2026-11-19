@@ -175,7 +175,7 @@ class StorageProvider:
 
     @classmethod
     def get_collection(cls, name: str):
-        if db_manager.db is not None:
+        if db_manager.is_connected and db_manager.db is not None:
             return db_manager.db[name]
         if name not in cls._local_collections:
             cls._local_collections[name] = LocalCollection(name)

@@ -46,10 +46,11 @@ class DatabaseManager:
             # Setup indexes in background
             asyncio.create_task(self.setup_indexes())
         except Exception as e:
-            # Keep db reference so Motor handles retries on real queries
-            self.is_connected = self.db is not None
-            self.connection_status = f"connection_warning: {str(e)}"
-            logger.warning(f"MongoDB initial ping warning (Motor will retry queries automatically): {e}")
+            self.client = None
+            self.db = None
+            self.is_connected = False
+            self.connection_status = f"unreachable: {str(e)}"
+            logger.warning(f"MongoDB Atlas is currently unreachable ({e}). Using resilient local database adapter.")
 
     async def setup_indexes(self):
         """Creates appropriate collections and indexes in MongoDB Atlas"""

@@ -1004,7 +1004,7 @@ function DashboardView({
       >
         <div className="relative z-10 max-w-2xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/35 text-[11px] sm:text-xs font-semibold text-emerald-300 mb-3 sm:mb-4 backdrop-blur-sm">
-            <Flame className="w-3.5 h-3.5 text-emerald-400" /> Dose of Culture • 14-Day Flow
+            Dose of Culture • 14-Day Flow
           </div>
           <h1 className="text-xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-white leading-tight drop-shadow-md">
             HELLO, WELCOME BACK TO MASTER YOUR TIME, <span className="text-emerald-400">{user.name.split(' ')[0]}</span>.

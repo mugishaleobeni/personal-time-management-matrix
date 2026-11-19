@@ -20,6 +20,7 @@ class SubTask(BaseModel):
         return values
 
 class TaskBase(BaseModel):
+    id: Optional[str] = None
     title: str
     description: Optional[str] = ""
     category: str = "Work"
@@ -34,6 +35,8 @@ class TaskBase(BaseModel):
     @root_validator(pre=True)
     def normalize_task_base(cls, values):
         if isinstance(values, dict):
+            if "id" not in values and "_id" in values:
+                values["id"] = str(values["_id"])
             if values.get("subtasks") is None:
                 values["subtasks"] = []
         return values

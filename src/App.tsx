@@ -35,16 +35,67 @@ const INITIAL_TASKS = [];
 const INITIAL_ROUTINES = [];
 const INITIAL_NOTES = [];
 
+const VALID_TABS = ['dashboard', 'tasks', 'timer', 'routine', 'calendar', 'notes', 'analytics', 'notifications', 'settings'];
+
+function getInitialTab(): string {
+  if (typeof window !== 'undefined') {
+    const hash = window.location.hash.replace(/^#/, '').toLowerCase().trim();
+    if (VALID_TABS.includes(hash)) {
+      return hash;
+    }
+    const saved = localStorage.getItem('zen_active_tab');
+    if (saved && VALID_TABS.includes(saved)) {
+      return saved;
+    }
+  }
+  return 'dashboard';
+}
+
+function getInitialSubPage(): string {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('zen_active_subpage');
+    if (saved) return saved;
+  }
+  return 'Overview';
+}
+
 export default function App() {
   // Navigation & View States
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [activeSubPage, setActiveSubPage] = useState('Overview');
+  const [activeTab, setActiveTab] = useState(getInitialTab);
+  const [activeSubPage, setActiveSubPage] = useState(getInitialSubPage);
   const [themeMode, setThemeMode] = useState('dark');
   const [isAuthenticated, setIsAuthenticated] = useState(() => !!api.getToken());
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authView, setAuthView] = useState('login');
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [headerSearchQuery, setHeaderSearchQuery] = useState('');
+
+  // Keep active tab and subpage synced with localStorage and URL hash
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('zen_active_tab', activeTab);
+      if (window.location.hash !== `#${activeTab}`) {
+        window.history.replaceState(null, '', `#${activeTab}`);
+      }
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('zen_active_subpage', activeSubPage);
+    }
+  }, [activeSubPage]);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace(/^#/, '').toLowerCase().trim();
+      if (VALID_TABS.includes(hash) && hash !== activeTab) {
+        setActiveTab(hash);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [activeTab]);
 
   // Validate existing session token on application load and fetch cloud data
   useEffect(() => {
@@ -66,7 +117,13 @@ export default function App() {
             api.getNotes().catch(() => null)
           ]);
           if (Array.isArray(taskList)) setTasks(taskList);
-          if (Array.isArray(routineList)) setRoutines(routineList);
+          if (Array.isArray(routineList)) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            setRoutines(routineList.map((r: any) => ({
+              ...r,
+              completed: r.lastCompletedDate === todayStr ? !!r.completed : false
+            })));
+          }
           if (Array.isArray(noteList)) setNotes(noteList);
         } else {
           api.setToken(null);
@@ -102,7 +159,13 @@ export default function App() {
         if (!isMounted) return;
         if (userData && userData.email) setUser(userData);
         if (Array.isArray(taskList)) setTasks(taskList);
-        if (Array.isArray(routineList)) setRoutines(routineList);
+        if (Array.isArray(routineList)) {
+          const todayStr = new Date().toISOString().split('T')[0];
+          setRoutines(routineList.map((r: any) => ({
+            ...r,
+            completed: r.lastCompletedDate === todayStr ? !!r.completed : false
+          })));
+        }
         if (Array.isArray(noteList)) setNotes(noteList);
       } catch (err) {
         console.warn("Backend data sync fallback:", err);
@@ -571,49 +634,67 @@ export default function App() {
   const toggleTaskCompletion = (taskId) => {
     let nextStatus = 'Completed';
     let updatedSubtasks: any[] = [];
+    let targetTaskId = taskId;
+
     setTasks(prev => prev.map(t => {
-      if (t.id === taskId) {
+      if (t.id === taskId || t._id === taskId) {
+        targetTaskId = t.id || t._id || taskId;
         nextStatus = t.status === 'Completed' ? 'In Progress' : 'Completed';
-        if (nextStatus === 'Completed' && t.subtasks && t.subtasks.length > 0) {
-          updatedSubtasks = t.subtasks.map((s: any, idx: number) => 
-            typeof s === 'object' ? { ...s, completed: true } : { id: `st-${idx}`, text: String(s), completed: true }
-          );
+        const currentSubtasks = Array.isArray(t.subtasks) ? t.subtasks : [];
+        if (nextStatus === 'Completed' && currentSubtasks.length > 0) {
+          updatedSubtasks = currentSubtasks.map((s: any, idx: number) => {
+            const sId = typeof s === 'object' && (s.id || s._id) ? String(s.id || s._id) : `st-${idx}`;
+            const sText = typeof s === 'object' ? (s.text || s.title || '') : String(s);
+            return { id: sId, text: sText, completed: true };
+          });
         } else {
-          updatedSubtasks = t.subtasks || [];
+          updatedSubtasks = currentSubtasks.map((s: any, idx: number) => {
+            const sId = typeof s === 'object' && (s.id || s._id) ? String(s.id || s._id) : `st-${idx}`;
+            const sText = typeof s === 'object' ? (s.text || s.title || '') : String(s);
+            return typeof s === 'object' ? { id: sId, text: sText, completed: !!s.completed } : { id: sId, text: sText, completed: false };
+          });
         }
         return { ...t, status: nextStatus, subtasks: updatedSubtasks };
       }
       return t;
     }));
-    api.toggleTask(taskId).then(updated => {
+
+    api.toggleTask(targetTaskId).then(updated => {
       if (updated) {
-        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updated } : t));
+        setTasks(prev => prev.map(t => (t.id === targetTaskId || t._id === targetTaskId) ? { ...t, ...updated } : t));
       }
     }).catch(() => {
       enqueueOfflineTaskAction({ 
         type: 'toggle_task', 
-        payload: { id: taskId, status: nextStatus, subtasks: updatedSubtasks } 
+        payload: { id: targetTaskId, status: nextStatus, subtasks: updatedSubtasks } 
       });
     });
   };
 
   const toggleRoutine = (routineId) => {
     const todayStr = new Date().toISOString().split('T')[0];
+    let targetRoutineId = routineId;
     setRoutines(prev => prev.map(r => {
-      if (r.id === routineId) {
-        const nextState = !r.completed;
+      if (r.id === routineId || r._id === routineId) {
+        targetRoutineId = r.id || r._id || routineId;
+        const isCurrentlyCompletedToday = r.lastCompletedDate === todayStr && r.completed;
+        const nextState = !isCurrentlyCompletedToday;
         return {
           ...r,
           completed: nextState,
-          lastCompletedDate: nextState ? todayStr : r.lastCompletedDate,
+          lastCompletedDate: nextState ? todayStr : null,
           streak: nextState ? (r.streak || 0) + 1 : Math.max(0, (r.streak || 1) - 1)
         };
       }
       return r;
     }));
-    api.toggleRoutine(routineId).then(updated => {
+    api.toggleRoutine(targetRoutineId).then(updated => {
       if (updated) {
-        setRoutines(prev => prev.map(r => r.id === routineId ? { ...updated, lastCompletedDate: todayStr } : r));
+        setRoutines(prev => prev.map(r => (r.id === targetRoutineId || r._id === targetRoutineId) ? {
+          ...r,
+          ...updated,
+          completed: updated.lastCompletedDate === todayStr ? !!updated.completed : false
+        } : r));
       }
     }).catch(err => console.warn("Routine toggle error:", err));
   };
@@ -1506,7 +1587,7 @@ function DashboardView({
       >
         <div className="relative z-10 max-w-2xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/35 text-[11px] sm:text-xs font-semibold text-emerald-300 mb-3 sm:mb-4 backdrop-blur-sm">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> Daily Momentum • 14-Day Flow
+            Daily Momentum • 14-Day Flow
           </div>
           <h1 className="text-xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-white leading-tight drop-shadow-md">
             HELLO, WELCOME BACK TO MASTER YOUR TIME, <span className="text-emerald-400">{user.name.split(' ')[0]}</span>.
@@ -2136,14 +2217,27 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
   const handleRemoveSubtaskFromForm = (subId: string) => {
     setFormData((prev: any) => ({
       ...prev,
-      subtasks: (prev.subtasks || []).filter((s: any) => (s.id || s._id) !== subId)
+      subtasks: (prev.subtasks || []).filter((s: any, idx: number) => {
+        const currentId = (typeof s === 'object' && (s.id || s._id)) ? String(s.id || s._id) : `st-${idx}`;
+        return currentId !== String(subId) && `st-${idx}` !== String(subId);
+      })
     }));
   };
 
   const handleToggleSubtaskInForm = (subId: string) => {
     setFormData((prev: any) => ({
       ...prev,
-      subtasks: (prev.subtasks || []).map((s: any) => (s.id || s._id) === subId ? { ...s, completed: !s.completed } : s)
+      subtasks: (prev.subtasks || []).map((s: any, idx: number) => {
+        const currentId = (typeof s === 'object' && (s.id || s._id)) ? String(s.id || s._id) : `st-${idx}`;
+        const isMatch = currentId === String(subId) || `st-${idx}` === String(subId) || idx === Number(subId);
+        const currentCompleted = typeof s === 'object' ? !!s.completed : false;
+        const currentText = typeof s === 'object' ? (s.text || s.title || '') : String(s);
+        return {
+          id: currentId,
+          text: currentText,
+          completed: isMatch ? !currentCompleted : currentCompleted
+        };
+      })
     }));
   };
 
@@ -2158,9 +2252,21 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
     };
 
     let updatedSubtasks: any[] = [];
+    let targetTaskId = taskId;
+
     setTasks(prev => prev.map(t => {
-      if (t.id === taskId) {
-        const nextSubtasks = [...(t.subtasks || []), newSub];
+      if (t.id === taskId || t._id === taskId) {
+        targetTaskId = t.id || t._id || taskId;
+        const normalizedPrev = (t.subtasks || []).map((s: any, idx: number) => typeof s === 'object' ? {
+          id: (s.id || s._id) ? String(s.id || s._id) : `st-${idx}`,
+          text: s.text || s.title || '',
+          completed: !!s.completed
+        } : {
+          id: `st-${idx}`,
+          text: String(s),
+          completed: false
+        });
+        const nextSubtasks = [...normalizedPrev, newSub];
         updatedSubtasks = nextSubtasks;
         return { ...t, subtasks: nextSubtasks };
       }
@@ -2170,11 +2276,18 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
     setQuickSubtaskInputs(prev => ({ ...prev, [taskId]: '' }));
 
     if (updatedSubtasks.length > 0) {
-      api.updateTask(taskId, { subtasks: updatedSubtasks }).catch(() => {
-        if (enqueueOfflineTaskAction) {
-          enqueueOfflineTaskAction({ type: 'update_task', payload: { id: taskId, updates: { subtasks: updatedSubtasks } } });
-        }
-      });
+      api.updateTask(targetTaskId, { subtasks: updatedSubtasks })
+        .then(updated => {
+          if (updated && Array.isArray(updated.subtasks)) {
+            setTasks(prev => prev.map(t => (t.id === targetTaskId || t._id === targetTaskId) ? { ...t, subtasks: updated.subtasks } : t));
+          }
+        })
+        .catch(err => {
+          console.warn("Could not save new subtask to database, queued for sync:", err);
+          if (enqueueOfflineTaskAction) {
+            enqueueOfflineTaskAction({ type: 'update_task', payload: { id: targetTaskId, updates: { subtasks: updatedSubtasks } } });
+          }
+        });
       showToast("Subtask added & synced!");
     }
   };
@@ -2184,7 +2297,16 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
     if (!formData.title.trim()) return;
 
     // Automatically capture any subtask text typed in the input field
-    let finalSubtasks = [...(formData.subtasks || [])];
+    let finalSubtasks = [...(formData.subtasks || [])].map((s: any, idx: number) => typeof s === 'object' ? {
+      id: (s.id || s._id) ? String(s.id || s._id) : `st-${idx}`,
+      text: s.text || s.title || '',
+      completed: !!s.completed
+    } : {
+      id: `st-${idx}`,
+      text: String(s),
+      completed: false
+    });
+
     if (newSubtaskText.trim()) {
       finalSubtasks.push({
         id: `st-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -2200,14 +2322,15 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
     };
 
     if (editingTask) {
+      const targetId = editingTask.id || editingTask._id;
       try {
-        const updated = await api.updateTask(editingTask.id, payload);
-        setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...updated } : t));
+        const updated = await api.updateTask(targetId, payload);
+        setTasks(prev => prev.map(t => (t.id === targetId || t._id === targetId) ? { ...t, ...updated } : t));
         showToast("Task updated & synced!");
       } catch {
-        setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...payload } : t));
+        setTasks(prev => prev.map(t => (t.id === targetId || t._id === targetId) ? { ...t, ...payload } : t));
         if (enqueueOfflineTaskAction) {
-          enqueueOfflineTaskAction({ type: 'update_task', payload: { id: editingTask.id, updates: payload } });
+          enqueueOfflineTaskAction({ type: 'update_task', payload: { id: targetId, updates: payload } });
         }
         showToast("Task updated locally (queued for online sync)!");
       }
@@ -2239,7 +2362,7 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
   };
 
   const handleDelete = (id) => {
-    setTasks(prev => prev.filter(t => t.id !== id));
+    setTasks(prev => prev.filter(t => t.id !== id && t._id !== id));
     api.deleteTask(id).catch(() => {
       if (enqueueOfflineTaskAction) {
         enqueueOfflineTaskAction({ type: 'delete_task', payload: { id } });
@@ -2248,22 +2371,45 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
     showToast("Task removed.");
   };
 
-  const toggleSubtask = (taskId, subtaskId) => {
-    let updatedSubtasks = null;
+  const toggleSubtask = (taskId: string, subtaskId: string) => {
+    let updatedSubtasks: any[] | null = null;
+    let targetTaskId = taskId;
+
     setTasks(prev => prev.map(t => {
-      if (t.id === taskId) {
-        const nextSubtasks = (t.subtasks || []).map(s => (s.id || s._id) === subtaskId ? { ...s, completed: !s.completed } : s);
+      const match = (t.id === taskId || t._id === taskId);
+      if (match) {
+        targetTaskId = t.id || t._id || taskId;
+        const currentList = Array.isArray(t.subtasks) ? t.subtasks : [];
+        const nextSubtasks = currentList.map((s: any, idx: number) => {
+          const sId = typeof s === 'object' && (s.id || s._id) ? String(s.id || s._id) : `st-${idx}`;
+          const isMatch = sId === String(subtaskId) || `st-${idx}` === String(subtaskId) || idx === Number(subtaskId);
+          const currentCompleted = typeof s === 'object' ? !!s.completed : false;
+          const currentText = typeof s === 'object' ? (s.text || s.title || '') : String(s);
+          return {
+            id: sId,
+            text: currentText,
+            completed: isMatch ? !currentCompleted : currentCompleted
+          };
+        });
         updatedSubtasks = nextSubtasks;
         return { ...t, subtasks: nextSubtasks };
       }
       return t;
     }));
+
     if (updatedSubtasks) {
-      api.updateTask(taskId, { subtasks: updatedSubtasks }).catch(() => {
-        if (enqueueOfflineTaskAction) {
-          enqueueOfflineTaskAction({ type: 'update_task', payload: { id: taskId, updates: { subtasks: updatedSubtasks } } });
-        }
-      });
+      api.updateTask(targetTaskId, { subtasks: updatedSubtasks })
+        .then(updated => {
+          if (updated && Array.isArray(updated.subtasks)) {
+            setTasks(prev => prev.map(t => (t.id === targetTaskId || t._id === targetTaskId) ? { ...t, subtasks: updated.subtasks } : t));
+          }
+        })
+        .catch(err => {
+          console.warn("Could not save subtask toggle to database, queued for sync:", err);
+          if (enqueueOfflineTaskAction) {
+            enqueueOfflineTaskAction({ type: 'update_task', payload: { id: targetTaskId, updates: { subtasks: updatedSubtasks } } });
+          }
+        });
     }
   };
 
@@ -2488,11 +2634,11 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
                         {task.subtasks.map((sub: any, sIdx: number) => {
                           const sText = typeof sub === 'string' ? sub : (sub.text || sub.title || 'Checklist item');
                           const sCompleted = typeof sub === 'object' ? !!sub.completed : false;
-                          const sId = typeof sub === 'object' && (sub.id || sub._id) ? (sub.id || sub._id) : `st-${sIdx}`;
+                          const sId = typeof sub === 'object' && (sub.id || sub._id) ? String(sub.id || sub._id) : `st-${sIdx}`;
                           return (
                             <div 
                               key={sId} 
-                              onClick={() => toggleSubtask(task.id, sId)}
+                              onClick={() => toggleSubtask(task.id || task._id, sId)}
                               className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer hover:text-white group/sub"
                             >
                               <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition ${
@@ -2512,19 +2658,19 @@ function TasksManagerView({ tasks, setTasks, setActiveTaskId, setActiveTab, show
                       <input 
                         type="text"
                         placeholder="+ Add subtask checklist item..."
-                        value={quickSubtaskInputs[task.id] || ''}
-                        onChange={(e) => setQuickSubtaskInputs({ ...quickSubtaskInputs, [task.id]: e.target.value })}
+                        value={quickSubtaskInputs[task.id || task._id] || ''}
+                        onChange={(e) => setQuickSubtaskInputs({ ...quickSubtaskInputs, [task.id || task._id]: e.target.value })}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             e.preventDefault();
-                            handleQuickAddSubtask(task.id);
+                            handleQuickAddSubtask(task.id || task._id);
                           }
                         }}
                         className="flex-1 px-3 py-1.5 text-xs rounded-xl bg-white/[0.08] border border-white/15 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                       />
                       <button
                         type="button"
-                        onClick={() => handleQuickAddSubtask(task.id)}
+                        onClick={() => handleQuickAddSubtask(task.id || task._id)}
                         className="px-3 py-1.5 text-[11px] font-bold rounded-xl bg-emerald-500/25 hover:bg-emerald-500/40 text-emerald-300 hover:text-white border border-emerald-500/40 transition active:scale-95 shrink-0"
                       >
                         Add

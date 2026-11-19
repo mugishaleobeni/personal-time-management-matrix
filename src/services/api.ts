@@ -220,6 +220,12 @@ class ApiService {
     });
   }
 
+  async toggleSubtask(taskId: string, subtaskId: string): Promise<Task> {
+    return this.request<Task>(`/tasks/${taskId}/subtasks/${subtaskId}/toggle`, {
+      method: 'POST',
+    });
+  }
+
   async accumulateTaskTime(id: string, seconds: number = 1): Promise<Task> {
     return this.request<Task>(`/tasks/${id}/time`, {
       method: 'POST',

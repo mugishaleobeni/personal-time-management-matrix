@@ -29,18 +29,18 @@ class Settings(BaseSettings):
     PORT: int = Field(default=8000)
 
     # Email & SMTP Settings
-    SMTP_HOST: str = Field(default="smtp.gmail.com")
+    SMTP_HOST: str = Field(default="smtp-relay.brevo.com")
     SMTP_PORT: int = Field(default=587)
-    SMTP_USER: str = Field(default="engineerleobeni@gmail.com")
-    GMAIL_APP_PASSWORD: str = Field(default="lygz ltwu itmf mrtz")
-    SMTP_PASSWORD: str = Field(default="lygz ltwu itmf mrtz")
-    SMTP_FROM_EMAIL: str = Field(default="engineerleobeni@gmail.com")
-    SMTP_FROM_NAME: str = Field(default="Master Your Time")
+    SMTP_USER: str = Field(default="")
+    GMAIL_APP_PASSWORD: str = Field(default="")
+    SMTP_PASSWORD: str = Field(default="")
+    SMTP_FROM_EMAIL: str = Field(default="mugishaleobeni0@gmail.com")
+    SMTP_FROM_NAME: str = Field(default="pylarix")
     
     # Brevo (Sendinblue) HTTPS API (Port 443) - Primary Cloud Provider
     BREVO_API_KEY: str = Field(default="", description="Brevo HTTPS API key for cloud email delivery over port 443")
-    BREVO_SENDER_EMAIL: str = Field(default="engineerleobeni@gmail.com", description="Verified sender email address registered with Brevo")
-    BREVO_SENDER_NAME: str = Field(default="Master Your Time", description="Display name for Brevo email dispatches")
+    BREVO_SENDER_EMAIL: str = Field(default="mugishaleobeni0@gmail.com", description="Verified sender email address registered with Brevo")
+    BREVO_SENDER_NAME: str = Field(default="pylarix", description="Display name for Brevo email dispatches")
     
     # Resend & Fallback Gateways
     RESEND_API_KEY: str = Field(default="", description="Resend HTTPS API key for cloud email delivery over port 443")

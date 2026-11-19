@@ -11,22 +11,32 @@ router = APIRouter(prefix="/tasks", tags=["Tasks Manager"])
 
 def serialize_task(doc: dict) -> dict:
     item = dict(doc)
-    item["id"] = item.get("_id") or item.get("id")
+    item["id"] = str(item.get("_id") or item.get("id"))
     raw_subtasks = item.get("subtasks")
     if not isinstance(raw_subtasks, list):
         raw_subtasks = []
     normalized_subtasks = []
-    for s in raw_subtasks:
+    for idx, s in enumerate(raw_subtasks):
         if isinstance(s, dict):
             s_dict = dict(s)
-            s_id = s_dict.get("id") or s_dict.get("_id") or f"st-{uuid.uuid4().hex[:8]}"
+            s_id = s_dict.get("id") or s_dict.get("_id") or f"st-{idx}"
             s_text = s_dict.get("text") or s_dict.get("title") or s_dict.get("name") or ""
             s_completed = bool(s_dict.get("completed", False))
             normalized_subtasks.append({"id": str(s_id), "text": str(s_text), "completed": s_completed})
         elif isinstance(s, str):
-            normalized_subtasks.append({"id": f"st-{uuid.uuid4().hex[:8]}", "text": s, "completed": False})
+            normalized_subtasks.append({"id": f"st-{idx}", "text": s, "completed": False})
     item["subtasks"] = normalized_subtasks
     return item
+
+def get_task_query(task_id: str, user_id: str) -> dict:
+    conditions: List[dict] = [{"_id": str(task_id)}, {"id": str(task_id)}]
+    try:
+        from bson import ObjectId
+        if ObjectId.is_valid(task_id):
+            conditions.append({"_id": ObjectId(task_id)})
+    except Exception:
+        pass
+    return {"userId": user_id, "$or": conditions}
 
 @router.get("", response_model=List[TaskResponse])
 async def list_tasks(
@@ -56,11 +66,12 @@ async def list_tasks(
 @router.post("", response_model=TaskResponse)
 async def create_task(data: TaskCreate, current_user: dict = Depends(get_current_user)):
     user_id = current_user["_id"]
-    task_id = f"tsk-{uuid.uuid4().hex[:10]}"
+    task_id = (data.id and str(data.id).startswith("tsk-")) and str(data.id) or f"tsk-{uuid.uuid4().hex[:10]}"
     
     now = datetime.utcnow()
     doc = data.dict()
     doc["_id"] = task_id
+    doc["id"] = task_id
     doc["userId"] = user_id
     doc["createdAt"] = now
     doc["updatedAt"] = now
@@ -71,7 +82,7 @@ async def create_task(data: TaskCreate, current_user: dict = Depends(get_current
 @router.get("/{task_id}", response_model=TaskResponse)
 async def get_task(task_id: str, current_user: dict = Depends(get_current_user)):
     user_id = current_user["_id"]
-    task = await get_col("tasks").find_one({"_id": task_id, "userId": user_id})
+    task = await get_col("tasks").find_one(get_task_query(task_id, user_id))
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return TaskResponse(**serialize_task(task))
@@ -81,7 +92,7 @@ async def update_task(task_id: str, data: TaskUpdate, current_user: dict = Depen
     user_id = current_user["_id"]
     tasks_col = get_col("tasks")
     
-    existing = await tasks_col.find_one({"_id": task_id, "userId": user_id})
+    existing = await tasks_col.find_one(get_task_query(task_id, user_id))
     if not existing:
         raise HTTPException(status_code=404, detail="Task not found")
         
@@ -89,32 +100,36 @@ async def update_task(task_id: str, data: TaskUpdate, current_user: dict = Depen
     update_data["updatedAt"] = datetime.utcnow()
     
     # Auto-check all subtasks when task status is updated to Completed
-    if update_data.get("status") == "Completed" and "subtasks" not in update_data:
-        existing_subtasks = existing.get("subtasks", []) or []
-        if existing_subtasks:
+    if update_data.get("status") == "Completed":
+        subtasks_to_complete = update_data.get("subtasks") if "subtasks" in update_data else (existing.get("subtasks", []) or [])
+        if subtasks_to_complete:
             update_data["subtasks"] = [
                 {**st, "completed": True} if isinstance(st, dict) else {"id": f"st-{idx}", "text": str(st), "completed": True}
-                for idx, st in enumerate(existing_subtasks)
+                for idx, st in enumerate(subtasks_to_complete)
             ]
     
-    await tasks_col.update_one({"_id": task_id, "userId": user_id}, {"$set": update_data})
-    updated = await tasks_col.find_one({"_id": task_id, "userId": user_id}) or existing
+    target_id = existing.get("_id") or existing.get("id") or task_id
+    await tasks_col.update_one({"_id": target_id}, {"$set": update_data})
+    updated = await tasks_col.find_one({"_id": target_id}) or existing
     updated.update(update_data)
     return TaskResponse(**serialize_task(updated))
 
 @router.delete("/{task_id}")
 async def delete_task(task_id: str, current_user: dict = Depends(get_current_user)):
     user_id = current_user["_id"]
-    res = await get_col("tasks").delete_one({"_id": task_id, "userId": user_id})
-    if res.deleted_count == 0:
+    tasks_col = get_col("tasks")
+    task = await tasks_col.find_one(get_task_query(task_id, user_id))
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    target_id = task.get("_id") or task.get("id") or task_id
+    await tasks_col.delete_one({"_id": target_id})
     return {"status": "success", "deleted_id": task_id}
 
 @router.post("/{task_id}/toggle", response_model=TaskResponse)
 async def toggle_task_completion(task_id: str, current_user: dict = Depends(get_current_user)):
     user_id = current_user["_id"]
     tasks_col = get_col("tasks")
-    task = await tasks_col.find_one({"_id": task_id, "userId": user_id})
+    task = await tasks_col.find_one(get_task_query(task_id, user_id))
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
         
@@ -131,8 +146,9 @@ async def toggle_task_completion(task_id: str, current_user: dict = Depends(get_
         update_doc["subtasks"] = updated_subtasks
         task["subtasks"] = updated_subtasks
         
+    target_id = task.get("_id") or task.get("id") or task_id
     await tasks_col.update_one(
-        {"_id": task_id, "userId": user_id},
+        {"_id": target_id},
         {"$set": update_doc}
     )
     task["status"] = next_status
@@ -143,11 +159,51 @@ async def accumulate_task_time(task_id: str, body: TaskTimeIncrement, current_us
     user_id = current_user["_id"]
     tasks_col = get_col("tasks")
     
-    await tasks_col.update_one(
-        {"_id": task_id, "userId": user_id},
-        {"$inc": {"timeSpentSeconds": body.seconds}, "$set": {"updatedAt": datetime.utcnow()}}
-    )
-    task = await tasks_col.find_one({"_id": task_id, "userId": user_id})
+    task = await tasks_col.find_one(get_task_query(task_id, user_id))
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+        
+    target_id = task.get("_id") or task.get("id") or task_id
+    await tasks_col.update_one(
+        {"_id": target_id},
+        {"$inc": {"timeSpentSeconds": body.seconds}, "$set": {"updatedAt": datetime.utcnow()}}
+    )
+    task = await tasks_col.find_one({"_id": target_id})
+    return TaskResponse(**serialize_task(task))
+
+@router.post("/{task_id}/subtasks/{subtask_id}/toggle", response_model=TaskResponse)
+async def toggle_subtask_completion(task_id: str, subtask_id: str, current_user: dict = Depends(get_current_user)):
+    user_id = current_user["_id"]
+    tasks_col = get_col("tasks")
+    task = await tasks_col.find_one(get_task_query(task_id, user_id))
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    raw_subtasks = task.get("subtasks", []) or []
+    updated_subtasks = []
+    found = False
+    for idx, s in enumerate(raw_subtasks):
+        if isinstance(s, dict):
+            s_dict = dict(s)
+            s_id = str(s_dict.get("id") or s_dict.get("_id") or f"st-{idx}")
+            s_text = s_dict.get("text") or s_dict.get("title") or s_dict.get("name") or ""
+            s_comp = bool(s_dict.get("completed", False))
+            if s_id == str(subtask_id) or f"st-{idx}" == str(subtask_id) or str(idx) == str(subtask_id):
+                s_comp = not s_comp
+                found = True
+            updated_subtasks.append({"id": s_id, "text": s_text, "completed": s_comp})
+        elif isinstance(s, str):
+            s_id = f"st-{idx}"
+            s_comp = (s_id == str(subtask_id) or str(idx) == str(subtask_id))
+            if s_comp:
+                found = True
+            updated_subtasks.append({"id": s_id, "text": s, "completed": s_comp})
+
+    target_id = task.get("_id") or task.get("id") or task_id
+    await tasks_col.update_one(
+        {"_id": target_id},
+        {"$set": {"subtasks": updated_subtasks, "updatedAt": datetime.utcnow()}}
+    )
+    task["subtasks"] = updated_subtasks
+    task["updatedAt"] = datetime.utcnow()
     return TaskResponse(**serialize_task(task))
