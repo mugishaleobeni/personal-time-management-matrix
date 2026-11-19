@@ -1,5 +1,6 @@
 import uuid
 import logging
+import asyncio
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.models.user import (
@@ -182,7 +183,8 @@ async def login(data: UserLogin):
         )
         
     if "hashed_password" in user:
-        if not verify_password(data.password, user["hashed_password"]):
+        is_valid = await asyncio.to_thread(verify_password, data.password, user["hashed_password"])
+        if not is_valid:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password credentials"

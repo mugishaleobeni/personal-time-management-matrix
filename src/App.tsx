@@ -5589,20 +5589,30 @@ function AuthModal({ isOpen, onClose, authView, setAuthView, user, setUser, setI
           return;
         }
         const res = await api.login(emailInput.trim(), passInput);
-        setUser(res.user);
+        if (res.user) {
+          localStorage.setItem('zen_user', JSON.stringify(res.user));
+          setUser(res.user);
+        }
         if (setIsAuthenticated) setIsAuthenticated(true);
-        try {
-          const [taskList, routineList, noteList] = await Promise.all([
-            api.getTasks().catch(() => null),
-            api.getRoutines().catch(() => null),
-            api.getNotes().catch(() => null)
-          ]);
-          if (Array.isArray(taskList) && setTasks) setTasks(taskList);
-          if (Array.isArray(routineList) && setRoutines) setRoutines(routineList);
-          if (Array.isArray(noteList) && setNotes) setNotes(noteList);
-        } catch {}
-        showToast(`Welcome back, ${res.user.name}! 🚀`);
+        setLoading(false);
+        showToast(`Welcome back, ${res.user?.name || 'Explorer'}! 🚀`);
         onClose();
+        // Asynchronously load user's tasks, routines, and notes without blocking modal closure
+        api.getTasks().then(taskList => {
+          if (Array.isArray(taskList) && setTasks) setTasks(taskList);
+        }).catch(() => null);
+        api.getRoutines().then(routineList => {
+          if (Array.isArray(routineList) && setRoutines) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            setRoutines(routineList.map(r => ({
+              ...r,
+              isCompletedToday: r.lastCompletedDate === todayStr
+            })));
+          }
+        }).catch(() => null);
+        api.getNotes().then(noteList => {
+          if (Array.isArray(noteList) && setNotes) setNotes(noteList);
+        }).catch(() => null);
       } else if (authView === 'register') {
         if (!nameInput.trim()) {
           showToast("Please enter your full name");
@@ -5625,21 +5635,30 @@ function AuthModal({ isOpen, onClose, authView, setAuthView, user, setUser, setI
           return;
         }
         const res = await api.register(nameInput.trim(), emailInput.trim(), passInput);
-        setUser(res.user);
+        if (res.user) {
+          localStorage.setItem('zen_user', JSON.stringify(res.user));
+          setUser(res.user);
+        }
         if (setIsAuthenticated) setIsAuthenticated(true);
-        try {
-          const [taskList, routineList, noteList] = await Promise.all([
-            api.getTasks().catch(() => null),
-            api.getRoutines().catch(() => null),
-            api.getNotes().catch(() => null)
-          ]);
+        setLoading(false);
+        showToast(`Welcome, ${res.user?.name || 'Explorer'}! Your workspace is ready.`);
+        onClose();
+        // Asynchronously load initial user data in the background
+        api.getTasks().then(taskList => {
           if (Array.isArray(taskList) && setTasks) setTasks(taskList);
-          if (Array.isArray(routineList) && setRoutines) setRoutines(routineList);
+        }).catch(() => null);
+        api.getRoutines().then(routineList => {
+          if (Array.isArray(routineList) && setRoutines) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            setRoutines(routineList.map(r => ({
+              ...r,
+              isCompletedToday: r.lastCompletedDate === todayStr
+            })));
+          }
+        }).catch(() => null);
+        api.getNotes().then(noteList => {
           if (Array.isArray(noteList) && setNotes) setNotes(noteList);
-        } catch {}
-        showToast(`Welcome, ${res.user.name}! Your workspace is ready.`);
-        onClose();
-        onClose();
+        }).catch(() => null);
       } else if (authView === 'forgot') {
         if (forgotStep === 'request') {
           if (!emailInput.trim()) {
@@ -5682,8 +5701,21 @@ function AuthModal({ isOpen, onClose, authView, setAuthView, user, setUser, setI
           try {
             const loginRes = await api.login(emailInput.trim(), passInput);
             setUser(loginRes.user);
+            if (setIsAuthenticated) setIsAuthenticated(true);
             showToast(`Welcome back, ${loginRes.user.name}! 🚀`);
             onClose();
+            api.getTasks().then(taskList => {
+              if (Array.isArray(taskList) && setTasks) setTasks(taskList);
+            }).catch(() => null);
+            api.getRoutines().then(routineList => {
+              if (Array.isArray(routineList) && setRoutines) {
+                const todayStr = new Date().toISOString().split('T')[0];
+                setRoutines(routineList.map(r => ({ ...r, isCompletedToday: r.lastCompletedDate === todayStr })));
+              }
+            }).catch(() => null);
+            api.getNotes().then(noteList => {
+              if (Array.isArray(noteList) && setNotes) setNotes(noteList);
+            }).catch(() => null);
           } catch {
             showToast("Password updated successfully! Please sign in.");
             setAuthView('login');
@@ -5944,20 +5976,29 @@ function LandingAuthPage({
           return;
         }
         const res = await api.login(emailInput.trim(), passInput);
-        setUser(res.user);
+        if (res.user) {
+          localStorage.setItem('zen_user', JSON.stringify(res.user));
+          setUser(res.user);
+        }
         setIsAuthenticated(true);
-        // Immediately fetch user's tasks, routines, and notes from Atlas
-        try {
-          const [taskList, routineList, noteList] = await Promise.all([
-            api.getTasks().catch(() => null),
-            api.getRoutines().catch(() => null),
-            api.getNotes().catch(() => null)
-          ]);
+        setLoading(false);
+        showToast(`Welcome back, ${res.user?.name || 'Explorer'}! 🚀`);
+        // Asynchronously fetch user's tasks, routines, and notes without blocking login transition
+        api.getTasks().then(taskList => {
           if (Array.isArray(taskList) && setTasks) setTasks(taskList);
-          if (Array.isArray(routineList) && setRoutines) setRoutines(routineList);
+        }).catch(() => null);
+        api.getRoutines().then(routineList => {
+          if (Array.isArray(routineList) && setRoutines) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            setRoutines(routineList.map(r => ({
+              ...r,
+              isCompletedToday: r.lastCompletedDate === todayStr
+            })));
+          }
+        }).catch(() => null);
+        api.getNotes().then(noteList => {
           if (Array.isArray(noteList) && setNotes) setNotes(noteList);
-        } catch {}
-        showToast(`Welcome back, ${res.user.name}! 🚀`);
+        }).catch(() => null);
       } else if (authView === 'register') {
         if (!nameInput.trim()) {
           showToast("Please enter your full names.");
@@ -5980,22 +6021,29 @@ function LandingAuthPage({
           return;
         }
         const res = await api.register(nameInput.trim(), emailInput.trim(), passInput);
-        setUser(res.user);
+        if (res.user) {
+          localStorage.setItem('zen_user', JSON.stringify(res.user));
+          setUser(res.user);
+        }
         setIsAuthenticated(true);
-        try {
-          const [taskList, routineList, noteList] = await Promise.all([
-            api.getTasks().catch(() => null),
-            api.getRoutines().catch(() => null),
-            api.getNotes().catch(() => null)
-          ]);
+        setLoading(false);
+        showToast(`Welcome, ${res.user?.name || 'Explorer'}! Your workspace is ready.`);
+        // Asynchronously fetch initial tasks, routines, and notes in background
+        api.getTasks().then(taskList => {
           if (Array.isArray(taskList) && setTasks) setTasks(taskList);
-          if (Array.isArray(routineList) && setRoutines) setRoutines(routineList);
+        }).catch(() => null);
+        api.getRoutines().then(routineList => {
+          if (Array.isArray(routineList) && setRoutines) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            setRoutines(routineList.map(r => ({
+              ...r,
+              isCompletedToday: r.lastCompletedDate === todayStr
+            })));
+          }
+        }).catch(() => null);
+        api.getNotes().then(noteList => {
           if (Array.isArray(noteList) && setNotes) setNotes(noteList);
-        } catch {}
-        showToast(`Welcome, ${res.user.name}! Your workspace is ready.`);
-        setUser(res.user);
-        setIsAuthenticated(true);
-        showToast(`Welcome, ${res.user.name}! Your workspace is ready.`);
+        }).catch(() => null);
       } else if (authView === 'forgot') {
         if (forgotStep === 'request') {
           if (!emailInput.trim()) {
@@ -6040,6 +6088,18 @@ function LandingAuthPage({
             setUser(loginRes.user);
             setIsAuthenticated(true);
             showToast(`Password reset successfully! Welcome back, ${loginRes.user.name}. 🚀`);
+            api.getTasks().then(taskList => {
+              if (Array.isArray(taskList) && setTasks) setTasks(taskList);
+            }).catch(() => null);
+            api.getRoutines().then(routineList => {
+              if (Array.isArray(routineList) && setRoutines) {
+                const todayStr = new Date().toISOString().split('T')[0];
+                setRoutines(routineList.map(r => ({ ...r, isCompletedToday: r.lastCompletedDate === todayStr })));
+              }
+            }).catch(() => null);
+            api.getNotes().then(noteList => {
+              if (Array.isArray(noteList) && setNotes) setNotes(noteList);
+            }).catch(() => null);
           } catch {
             setUser(prev => ({ ...prev, email: emailInput.trim() }));
             setIsAuthenticated(true);
